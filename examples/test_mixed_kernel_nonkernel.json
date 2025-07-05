@@ -1,0 +1,33 @@
+{
+  "vulnerabilities": [
+    {
+      "id": "CVE-2023-52340",
+      "details": "Linux kernel IPv6 vulnerability - should be analyzed",
+      "analysis": {
+        "state": "under_investigation",
+        "justification": "requires_configuration",
+        "detail": "Config-only analysis - patch checking disabled. Manual review recommended to determine if CVE affects this kernel configuration.",
+        "timestamp": "2025-07-05T17:13:03Z"
+      }
+    },
+    {
+      "id": "CVE-2023-12345",
+      "details": "Apache HTTP Server vulnerability - should be filtered out"
+    },
+    {
+      "id": "CVE-2023-67890",
+      "details": "PostgreSQL database vulnerability - should be filtered out"
+    },
+    {
+      "id": "CVE-2023-11111",
+      "details": "Linux kernel device driver issue - should be analyzed"
+    }
+  ],
+  "metadata": {
+    "last_analysis": "2025-07-05T17:13:08Z",
+    "processed_count": 1,
+    "error_count": 0,
+    "tool_version": "2.0",
+    "analysis_method": "kernel_config_analysis"
+  }
+}

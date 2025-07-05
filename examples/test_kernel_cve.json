@@ -1,0 +1,73 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "serialNumber": "urn:uuid:test-kernel-12345",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2025-07-05T15:00:00Z",
+    "tools": [
+      {
+        "vendor": "TEST",
+        "name": "Test VEX Generator",
+        "version": "1.0"
+      }
+    ],
+    "last_analysis": "2025-07-05T14:56:02Z",
+    "processed_count": 2,
+    "error_count": 0,
+    "tool_version": "2.0",
+    "analysis_method": "kernel_config_analysis"
+  },
+  "vulnerabilities": [
+    {
+      "bom-ref": "kernel-1",
+      "id": "CVE-2023-52429",
+      "source": {
+        "name": "NVD",
+        "url": "https://nvd.nist.gov/"
+      },
+      "ratings": [
+        {
+          "source": {
+            "name": "NVD",
+            "url": "https://nvd.nist.gov/"
+          },
+          "score": 5.5,
+          "severity": "medium",
+          "method": "CVSSv3"
+        }
+      ],
+      "description": "Test kernel CVE for cache demonstration",
+      "analysis": {
+        "state": "under_investigation",
+        "detail": "Patch checking disabled - requires API key and WebDriver",
+        "timestamp": "2025-07-05T14:55:59Z"
+      }
+    },
+    {
+      "bom-ref": "kernel-2",
+      "id": "CVE-2023-52445",
+      "source": {
+        "name": "NVD",
+        "url": "https://nvd.nist.gov/"
+      },
+      "ratings": [
+        {
+          "source": {
+            "name": "NVD",
+            "url": "https://nvd.nist.gov/"
+          },
+          "score": 6.1,
+          "severity": "medium",
+          "method": "CVSSv3"
+        }
+      ],
+      "description": "Another test kernel CVE for cache demonstration",
+      "analysis": {
+        "state": "under_investigation",
+        "detail": "Patch checking disabled - requires API key and WebDriver",
+        "timestamp": "2025-07-05T14:56:02Z"
+      }
+    }
+  ]
+}

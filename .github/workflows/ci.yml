@@ -1,0 +1,143 @@
+# GitHub Actions workflow for VEX Kernel Checker
+name: VEX Kernel Checker CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.7, 3.8, 3.9, '3.10', '3.11']
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install coverage psutil  # Additional test dependencies
+    
+    - name: Run quick smoke tests
+      run: |
+        cd vex-kernel-checker
+        python tests/run_tests.py --quick
+    
+    - name: Run unit tests with coverage
+      run: |
+        cd vex-kernel-checker
+        python tests/run_tests.py --coverage --quiet
+    
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v3
+      if: matrix.python-version == '3.9'  # Only upload once
+      with:
+        file: vex-kernel-checker/htmlcov/coverage.xml
+        flags: unittests
+
+  lint:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.9
+    
+    - name: Install linting tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8 pylint black
+    
+    - name: Lint with flake8
+      run: |
+        cd vex-kernel-checker
+        flake8 vex-kernel-checker.py --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 vex-kernel-checker.py --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+    
+    - name: Check formatting with black
+      run: |
+        cd vex-kernel-checker
+        black --check --diff vex-kernel-checker.py
+
+  performance:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.9
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install psutil
+    
+    - name: Run performance benchmarks
+      run: |
+        cd vex-kernel-checker
+        python tests/benchmark.py --quiet --output benchmark_results.json
+    
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v3
+      with:
+        name: benchmark-results
+        path: vex-kernel-checker/benchmark_results.json
+
+  integration:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.9
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Create test kernel structure
+      run: |
+        mkdir -p test_kernel/{drivers/net,fs,net/core,kernel}
+        echo "CONFIG_NET=y" > test_kernel.config
+        echo '{"vulnerabilities":[{"id":"CVE-2023-1234","severity":"HIGH"}]}' > test.vex
+    
+    - name: Test configuration validation
+      run: |
+        cd vex-kernel-checker
+        python tests/validate_config.py \
+          --vex-file ../test.vex \
+          --kernel-config ../test_kernel.config \
+          --kernel-source ../test_kernel \
+          --quiet
+    
+    - name: Test tool functionality (config-only mode)
+      run: |
+        cd vex-kernel-checker
+        python vex-kernel-checker.py \
+          --vex-file ../test.vex \
+          --kernel-config ../test_kernel.config \
+          --kernel-source ../test_kernel \
+          --config-only \
+          --verbose

@@ -1,0 +1,21 @@
+{
+  "vulnerabilities": [
+    {
+      "id": "CVE-2023-52340",
+      "details": "Real Linux kernel CVE for testing",
+      "analysis": {
+        "state": "under_investigation",
+        "justification": "requires_configuration",
+        "detail": "Config-only analysis - patch checking disabled. Manual review recommended to determine if CVE affects this kernel configuration.",
+        "timestamp": "2025-07-05T17:12:36Z"
+      }
+    }
+  ],
+  "metadata": {
+    "last_analysis": "2025-07-05T17:12:36Z",
+    "processed_count": 1,
+    "error_count": 0,
+    "tool_version": "2.0",
+    "analysis_method": "kernel_config_analysis"
+  }
+}

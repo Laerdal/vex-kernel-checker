@@ -1,0 +1,28 @@
+{
+  "vulnerabilities": [
+    {
+      "id": "CVE-2023-0001",
+      "details": "Test vulnerability 1",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "requires_configuration",
+        "detail": "CONFIG_EXISTING_TEST=y required but not enabled",
+        "timestamp": "2023-01-01T12:00:00Z"
+      }
+    },
+    {
+      "id": "CVE-2023-0002", 
+      "details": "Test vulnerability 2 without existing analysis"
+    },
+    {
+      "id": "CVE-2023-0003",
+      "details": "Test vulnerability 3",
+      "analysis": {
+        "state": "affected",
+        "justification": "vulnerable_code_present",
+        "detail": "Vulnerable code is present in kernel",
+        "timestamp": "2023-01-01T12:00:00Z"
+      }
+    }
+  ]
+}

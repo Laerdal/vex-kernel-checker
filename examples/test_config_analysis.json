@@ -1,0 +1,25 @@
+{
+  "vulnerabilities": [
+    {
+      "id": "CVE-2023-CONFIG-TEST",
+      "details": "Test vulnerability that requires specific kernel config",
+      "analysis": {
+        "state": "not_affected",
+        "justification": "requires_configuration",
+        "detail": "Original analysis: CONFIG_OLD_TEST=y required but not enabled",
+        "timestamp": "2023-01-01T12:00:00Z"
+      }
+    },
+    {
+      "id": "CVE-2023-NEW-TEST",
+      "details": "New vulnerability without existing analysis"
+    }
+  ],
+  "metadata": {
+    "last_analysis": "2025-07-05T16:03:42Z",
+    "processed_count": 0,
+    "error_count": 0,
+    "tool_version": "2.0",
+    "analysis_method": "kernel_config_analysis"
+  }
+}

@@ -1,0 +1,173 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "serialNumber": "urn:uuid:test-12345",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2025-07-05T14:00:00Z",
+    "tools": [
+      {
+        "vendor": "TEST",
+        "name": "Test Tool",
+        "version": "1.0"
+      }
+    ],
+    "last_analysis": "2025-07-05T14:21:28Z",
+    "processed_count": 6,
+    "error_count": 0,
+    "tool_version": "2.0",
+    "analysis_method": "kernel_config_analysis"
+  },
+  "vulnerabilities": [
+    {
+      "bom-ref": "test-1",
+      "id": "CVE-2023-38469",
+      "source": {
+        "name": "NVD",
+        "url": "https://nvd.nist.gov/"
+      },
+      "ratings": [
+        {
+          "source": {
+            "name": "NVD",
+            "url": "https://nvd.nist.gov/"
+          },
+          "score": 5.5,
+          "severity": "medium",
+          "method": "CVSSv3"
+        }
+      ],
+      "description": "Test CVE 1",
+      "analysis": {
+        "state": "under_investigation",
+        "detail": "Patch checking disabled - requires API key and WebDriver",
+        "timestamp": "2025-07-05T14:21:18Z"
+      }
+    },
+    {
+      "bom-ref": "test-2",
+      "id": "CVE-2023-38470",
+      "source": {
+        "name": "NVD",
+        "url": "https://nvd.nist.gov/"
+      },
+      "ratings": [
+        {
+          "source": {
+            "name": "NVD",
+            "url": "https://nvd.nist.gov/"
+          },
+          "score": 6.1,
+          "severity": "medium",
+          "method": "CVSSv3"
+        }
+      ],
+      "description": "Test CVE 2",
+      "analysis": {
+        "state": "under_investigation",
+        "detail": "Patch checking disabled - requires API key and WebDriver",
+        "timestamp": "2025-07-05T14:21:20Z"
+      }
+    },
+    {
+      "bom-ref": "test-3",
+      "id": "CVE-2023-38471",
+      "source": {
+        "name": "NVD",
+        "url": "https://nvd.nist.gov/"
+      },
+      "ratings": [
+        {
+          "source": {
+            "name": "NVD",
+            "url": "https://nvd.nist.gov/"
+          },
+          "score": 7.2,
+          "severity": "high",
+          "method": "CVSSv3"
+        }
+      ],
+      "description": "Test CVE 3",
+      "analysis": {
+        "state": "under_investigation",
+        "detail": "Patch checking disabled - requires API key and WebDriver",
+        "timestamp": "2025-07-05T14:21:22Z"
+      }
+    },
+    {
+      "bom-ref": "test-4",
+      "id": "CVE-2023-38472",
+      "source": {
+        "name": "NVD",
+        "url": "https://nvd.nist.gov/"
+      },
+      "ratings": [
+        {
+          "source": {
+            "name": "NVD",
+            "url": "https://nvd.nist.gov/"
+          },
+          "score": 8.1,
+          "severity": "high",
+          "method": "CVSSv3"
+        }
+      ],
+      "description": "Test CVE 4",
+      "analysis": {
+        "state": "under_investigation",
+        "detail": "Patch checking disabled - requires API key and WebDriver",
+        "timestamp": "2025-07-05T14:21:24Z"
+      }
+    },
+    {
+      "bom-ref": "test-5",
+      "id": "CVE-2023-38473",
+      "source": {
+        "name": "NVD",
+        "url": "https://nvd.nist.gov/"
+      },
+      "ratings": [
+        {
+          "source": {
+            "name": "NVD",
+            "url": "https://nvd.nist.gov/"
+          },
+          "score": 6.8,
+          "severity": "medium",
+          "method": "CVSSv3"
+        }
+      ],
+      "description": "Test CVE 5",
+      "analysis": {
+        "state": "under_investigation",
+        "detail": "Patch checking disabled - requires API key and WebDriver",
+        "timestamp": "2025-07-05T14:21:26Z"
+      }
+    },
+    {
+      "bom-ref": "test-6",
+      "id": "CVE-2023-38474",
+      "source": {
+        "name": "NVD",
+        "url": "https://nvd.nist.gov/"
+      },
+      "ratings": [
+        {
+          "source": {
+            "name": "NVD",
+            "url": "https://nvd.nist.gov/"
+          },
+          "score": 7.5,
+          "severity": "high",
+          "method": "CVSSv3"
+        }
+      ],
+      "description": "Test CVE 6",
+      "analysis": {
+        "state": "under_investigation",
+        "detail": "Patch checking disabled - requires API key and WebDriver",
+        "timestamp": "2025-07-05T14:21:28Z"
+      }
+    }
+  ]
+}

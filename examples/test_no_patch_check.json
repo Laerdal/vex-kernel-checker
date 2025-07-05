@@ -1,0 +1,43 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "serialNumber": "urn:uuid:test-no-patch-check-12345",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2025-07-05T14:00:00Z",
+    "tools": [
+      {
+        "vendor": "TEST",
+        "name": "No Patch Check Test VEX",
+        "version": "1.0"
+      }
+    ],
+    "last_analysis": "2025-07-05T15:44:24Z",
+    "processed_count": 0,
+    "error_count": 0,
+    "tool_version": "2.0",
+    "analysis_method": "kernel_config_analysis"
+  },
+  "vulnerabilities": [
+    {
+      "bom-ref": "test-no-patch-1",
+      "id": "CVE-2023-52340",
+      "source": {
+        "name": "NVD",
+        "url": "https://nvd.nist.gov/"
+      },
+      "ratings": [
+        {
+          "source": {
+            "name": "NVD",
+            "url": "https://nvd.nist.gov/"
+          },
+          "score": 7.8,
+          "severity": "high",
+          "method": "CVSSv3"
+        }
+      ],
+      "description": "Test CVE without patch checking enabled"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "vulnerabilities": [
+    {
+      "id": "CVE-2023-1234",
+      "description": "Test vulnerability for checking",
+      "severity": "HIGH",
+      "analysis": {
+        "state": "under_investigation",
+        "detail": "No patch URL found in CVE references",
+        "timestamp": "2025-07-05T13:53:24Z"
+      }
+    }
+  ],
+  "metadata": {
+    "last_analysis": "2025-07-05T13:53:24Z",
+    "processed_count": 1,
+    "error_count": 0,
+    "tool_version": "2.0",
+    "analysis_method": "kernel_config_analysis"
+  }
+}
