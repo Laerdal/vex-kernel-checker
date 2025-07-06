@@ -1836,6 +1836,18 @@ class VexKernelChecker:
             'nfs': {
                 'CONFIG_NFS_FS', 'CONFIG_NFS_V4', 'CONFIG_NET'
             },
+            'cifs': {
+                'CONFIG_CIFS', 'CONFIG_CIFS_WEAK_PW_HASH', 'CONFIG_CIFS_UPCALL',
+                'CONFIG_CIFS_XATTR', 'CONFIG_CIFS_POSIX', 'CONFIG_NET'
+            },
+            'smb': {
+                'CONFIG_CIFS', 'CONFIG_CIFS_WEAK_PW_HASH', 'CONFIG_CIFS_UPCALL',
+                'CONFIG_CIFS_XATTR', 'CONFIG_CIFS_POSIX', 'CONFIG_NET'
+            },
+            'smbfs': {
+                'CONFIG_CIFS', 'CONFIG_CIFS_WEAK_PW_HASH', 'CONFIG_CIFS_UPCALL',
+                'CONFIG_CIFS_XATTR', 'CONFIG_CIFS_POSIX', 'CONFIG_NET'
+            },
             
             # Security drivers
             'selinux': {
@@ -1868,7 +1880,18 @@ class VexKernelChecker:
         # Detect graphics subsystem patterns
         gpu_patterns = ['drm', 'gpu', 'graphics', 'display', 'framebuffer']
         if any(pattern in description_lower for pattern in gpu_patterns):
-            driver_configs.update(['CONFIG_DRM', 'CONFIG_FB'])
+            # Don't add general graphics configs as they're now in general_configs
+            # Only add if we can detect specific driver patterns
+            if 'i915' in description_lower:
+                driver_configs.update(['CONFIG_DRM_I915'])
+            elif 'amdgpu' in description_lower or 'amd' in description_lower:
+                driver_configs.update(['CONFIG_DRM_AMDGPU'])
+            elif 'radeon' in description_lower:
+                driver_configs.update(['CONFIG_DRM_RADEON'])
+            elif 'nouveau' in description_lower or 'nvidia' in description_lower:
+                driver_configs.update(['CONFIG_DRM_NOUVEAU'])  # NVIDIA open-source driver
+            # For generic graphics mentions without specific drivers, don't add configs
+            # as CONFIG_DRM and CONFIG_FB are now in general_configs
         
         # Detect storage subsystem patterns
         storage_patterns = ['block', 'disk', 'storage', 'scsi', 'ata', 'ide']
@@ -1884,6 +1907,17 @@ class VexKernelChecker:
         sound_patterns = ['sound', 'audio', 'alsa', 'pcm']
         if any(pattern in description_lower for pattern in sound_patterns):
             driver_configs.update(['CONFIG_SOUND', 'CONFIG_SND'])
+        
+        # Detect filesystem patterns
+        fs_patterns = ['filesystem', 'fs/', 'file system']
+        if any(pattern in description_lower for pattern in fs_patterns):
+            # Don't add general filesystem configs, rely on specific patterns
+            pass
+        
+        # Detect SMB/CIFS patterns specifically
+        smb_patterns = ['smb', 'cifs', 'samba', 'smb2', 'smb3']
+        if any(pattern in description_lower for pattern in smb_patterns):
+            driver_configs.update(['CONFIG_CIFS', 'CONFIG_NET'])
         
         return driver_configs
 
@@ -2783,7 +2817,8 @@ class VexKernelChecker:
                           'CONFIG_BLOCK', 'CONFIG_SCSI', 'CONFIG_SOUND', 'CONFIG_INPUT', 'CONFIG_HID',
                           'CONFIG_I2C', 'CONFIG_SPI', 'CONFIG_GPIO', 'CONFIG_DMA_ENGINE', 'CONFIG_OF',
                           'CONFIG_REGMAP', 'CONFIG_IRQ_DOMAIN', 'CONFIG_PINCTRL', 'CONFIG_CLK',
-                          'CONFIG_RESET_CONTROLLER', 'CONFIG_RFS_ACCEL', 'CONFIG_CORE'}
+                          'CONFIG_RESET_CONTROLLER', 'CONFIG_RFS_ACCEL', 'CONFIG_CORE',
+                          'CONFIG_DRM', 'CONFIG_FB', 'CONFIG_DRM_KMS_HELPER', 'CONFIG_FRAMEBUFFER_CONSOLE'}
         
         # Add architecture configs to general configs so they're not treated as critical
         arch_general_configs = {

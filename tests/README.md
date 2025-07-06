@@ -122,6 +122,47 @@ python3 tests/validate_config.py --quiet [options...]
 python3 tests/validate_config.py --json-output validation_results.json [options...]
 ```
 
+### 5. Filesystem Vulnerability Analysis Tests (`test_filesystem_analysis.py`)
+
+Specialized test suite for filesystem vulnerability pattern detection:
+- **SMB/CIFS Support**: Tests for SMB/CIFS CVE detection and configuration analysis
+- **NFS Support**: Network File System vulnerability assessment
+- **EXT4/BTRFS Support**: Local filesystem vulnerability detection
+- **Mixed Environments**: Multi-filesystem configuration testing
+- **Pattern Detection**: Validation of filesystem-specific keyword recognition
+
+**Test Coverage:**
+- SMB/CIFS CVEs with enabled CIFS configs → `exploitable`
+- SMB/CIFS CVEs without CIFS configs → `not_affected`
+- NFS CVEs without NFS support → `not_affected`
+- Mixed filesystem environments with selective support
+- Proper VEX state assignment (`exploitable`, `not_affected`, `in_triage`)
+
+**Test Files:**
+- `test_smb_cve.json` - SMB/CIFS vulnerability test case
+- `test_nfs_cve.json` - NFS vulnerability test case  
+- `test_fs_multi.json` - Multi-filesystem test case
+- `test_smb.config` - Kernel config with CIFS enabled
+- `test_no_smb.config` - Kernel config without CIFS
+- `test_no_nfs.config` - Kernel config without NFS
+- `test_mixed_fs.config` - Mixed filesystem support config
+
+**Usage:**
+```bash
+# Run all filesystem tests
+python3 tests/test_filesystem_analysis.py
+
+# Run specific test category
+python3 tests/test_filesystem_analysis.py --test smb
+python3 tests/test_filesystem_analysis.py --test nfs
+python3 tests/test_filesystem_analysis.py --test mixed
+
+# Test individual filesystems
+python3 tests/test_filesystem_analysis.py --test smb    # SMB/CIFS tests
+python3 tests/test_filesystem_analysis.py --test nfs    # NFS tests
+python3 tests/test_filesystem_analysis.py --test mixed  # Multi-FS tests
+```
+
 ## Test Categories
 
 ### Unit Tests
@@ -146,6 +187,13 @@ python3 tests/validate_config.py --json-output validation_results.json [options.
 - **Environment Compatibility**: Python version and dependency checking
 - **File Format Validation**: VEX, kernel config, and source file format verification
 - **External Tool Integration**: WebDriver and API connectivity validation
+
+### Filesystem Vulnerability Analysis Tests
+- **SMB/CIFS Vulnerability Detection**: Validate detection of SMB/CIFS related CVEs
+- **NFS Vulnerability Detection**: Validate detection of NFS related CVEs
+- **EXT4/BTRFS Vulnerability Detection**: Validate detection of local filesystem vulnerabilities
+- **Mixed Filesystem Configuration**: Test behavior in environments with multiple filesystem types
+- **Pattern Detection**: Ensure correct identification of filesystem-specific vulnerability patterns
 
 ## Running Tests in Different Environments
 

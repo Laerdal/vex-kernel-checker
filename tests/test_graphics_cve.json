@@ -1,0 +1,8 @@
+{
+  "vulnerabilities": [
+    {
+      "description": "CVE-2024-49894 for graphics driver testing",
+      "id": "CVE-2024-49894"
+    }
+  ]
+}
