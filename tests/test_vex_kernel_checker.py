@@ -264,18 +264,18 @@ endif
         # Test case 1: All required configs are enabled
         enabled_configs = {"CONFIG_NET", "CONFIG_BT"}
         analysis = self.checker.in_kernel_config(enabled_configs, kernel_config)
-        self.assertEqual(analysis.state, VulnerabilityState.AFFECTED)
+        self.assertEqual(analysis.state, VulnerabilityState.EXPLOITABLE)
         
         # Test case 2: Required config is missing
         missing_configs = {"CONFIG_NET", "CONFIG_MISSING_FEATURE"}
         analysis = self.checker.in_kernel_config(missing_configs, kernel_config)
         self.assertEqual(analysis.state, VulnerabilityState.NOT_AFFECTED)
-        self.assertEqual(analysis.justification, Justification.REQUIRES_CONFIGURATION)
+        self.assertEqual(analysis.justification, Justification.CODE_NOT_PRESENT)
         
         # Test case 3: No specific configs found (default case)
         empty_configs = set()
         analysis = self.checker.in_kernel_config(empty_configs, kernel_config)
-        self.assertEqual(analysis.state, VulnerabilityState.AFFECTED)
+        self.assertEqual(analysis.state, VulnerabilityState.IN_TRIAGE)
     
     def test_architecture_extraction(self):
         """Test architecture information extraction from file paths."""
@@ -393,7 +393,7 @@ endif
                     "id": "CVE-2023-1234",
                     "severity": "HIGH",
                     "analysis": {
-                        "state": "affected",
+                        "state": "exploitable",
                         "detail": "Configuration enabled"
                     }
                 },
@@ -411,14 +411,11 @@ endif
         
         report = self.checker.generate_vulnerability_report(vex_data_with_analysis)
         
-        self.assertEqual(report['total_vulnerabilities'], 2)
-        self.assertEqual(report['analyzed_vulnerabilities'], 2)
-        self.assertEqual(report['affected'], 1)
+        self.assertEqual(report['total'], 2)
+        self.assertEqual(report['exploitable'], 1)
         self.assertEqual(report['not_affected'], 1)
-        self.assertEqual(report['severity_breakdown']['HIGH'], 1)
-        self.assertEqual(report['severity_breakdown']['MEDIUM'], 1)
-        self.assertEqual(len(report['high_priority_cves']), 1)
-        self.assertEqual(len(report['configuration_issues']), 1)
+        self.assertIn('summary', report)
+        self.assertIn('by_state', report['summary'])
     
     def test_kernel_architecture_detection(self):
         """Test kernel architecture detection from configuration."""

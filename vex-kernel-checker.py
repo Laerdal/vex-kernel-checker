@@ -31,7 +31,6 @@ import traceback
 import signal
 import threading
 import functools
-import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache
 from pathlib import Path
@@ -152,19 +151,26 @@ perf_tracker = PerformanceTracker()
 
 
 class VulnerabilityState(Enum):
-    """Enumeration of possible vulnerability states."""
-    AFFECTED = "affected"
+    """Enumeration of possible vulnerability states according to CycloneDX v1.6."""
+    RESOLVED = "resolved"
+    RESOLVED_WITH_PEDIGREE = "resolved_with_pedigree"
+    EXPLOITABLE = "exploitable"
+    IN_TRIAGE = "in_triage"
+    FALSE_POSITIVE = "false_positive"
     NOT_AFFECTED = "not_affected"
-    UNDER_INVESTIGATION = "under_investigation"
 
 
 class Justification(Enum):
-    """Enumeration of justification reasons for vulnerability state."""
-    COMPONENT_NOT_PRESENT = "component_not_present"
-    VULNERABLE_CODE_NOT_PRESENT = "vulnerable_code_not_present"
-    VULNERABLE_CODE_PRESENT = "vulnerable_code_present"
+    """Enumeration of justification reasons for vulnerability state according to CycloneDX v1.6."""
+    CODE_NOT_PRESENT = "code_not_present"
+    CODE_NOT_REACHABLE = "code_not_reachable"
     REQUIRES_CONFIGURATION = "requires_configuration"
-    PROTECTED_BY_MITIGATIONS = "protected_by_mitigations"
+    REQUIRES_DEPENDENCY = "requires_dependency"
+    REQUIRES_ENVIRONMENT = "requires_environment"
+    PROTECTED_BY_COMPILER = "protected_by_compiler"
+    PROTECTED_AT_RUNTIME = "protected_at_runtime"
+    PROTECTED_AT_PERIMETER = "protected_at_perimeter"
+    PROTECTED_BY_MITIGATING_CONTROL = "protected_by_mitigating_control"
 
 
 class Response(Enum):
@@ -1622,8 +1628,8 @@ class VexKernelChecker:
             
             # Fallback analysis
             return VulnerabilityAnalysis(
-                state=VulnerabilityState.UNDER_INVESTIGATION,
-                justification=Justification.COMPONENT_NOT_PRESENT,
+                state=VulnerabilityState.IN_TRIAGE,
+                justification=Justification.CODE_NOT_PRESENT,
                 response=Response.CAN_NOT_FIX,
                 detail="Unable to determine configuration requirements",
                 timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -1774,7 +1780,7 @@ class VexKernelChecker:
             # Skip if already analyzed and not forcing re-analysis
             if not reanalyse and 'analysis' in vuln:
                 existing_state = vuln['analysis'].get('state')
-                if existing_state in ['affected', 'not_affected']:
+                if existing_state in ['resolved', 'resolved_with_pedigree', 'exploitable', 'false_positive', 'not_affected']:
                     if self.verbose:
                         print(f"Skipping {cve_vuln_id} - already analyzed as {existing_state}")
                     continue
@@ -1849,9 +1855,12 @@ class VexKernelChecker:
     def generate_vulnerability_report(self, vex_data: Dict) -> Dict:
         """Generate a comprehensive vulnerability report from VEX data."""
         report = {
-            'affected': 0,
+            'resolved': 0,
+            'resolved_with_pedigree': 0,
+            'exploitable': 0,
+            'in_triage': 0,
+            'false_positive': 0,
             'not_affected': 0,
-            'under_investigation': 0,
             'total': 0,
             'vulnerabilities': {},
             'summary': {},
@@ -1871,15 +1880,24 @@ class VexKernelChecker:
         for vuln in vulnerabilities:
             cve_id = vuln.get('id', 'unknown')
             analysis = vuln.get('analysis', {})
-            state = analysis.get('state', 'under_investigation')
+            state = analysis.get('state', 'in_triage')
             
-            # Count by state
-            if state == 'affected':
-                report['affected'] += 1
+            # Count by state using CycloneDX v1.6 states
+            if state == 'resolved':
+                report['resolved'] += 1
+            elif state == 'resolved_with_pedigree':
+                report['resolved_with_pedigree'] += 1
+            elif state == 'exploitable':
+                report['exploitable'] += 1
+            elif state == 'in_triage':
+                report['in_triage'] += 1
+            elif state == 'false_positive':
+                report['false_positive'] += 1
             elif state == 'not_affected':
                 report['not_affected'] += 1
             else:
-                report['under_investigation'] += 1
+                # Default unknown states to in_triage
+                report['in_triage'] += 1
             
             # Store vulnerability details
             vuln_details = {
@@ -1903,7 +1921,8 @@ class VexKernelChecker:
             'by_state': by_state,
             'by_severity': by_severity,
             'completion_rate': (
-                (report['affected'] + report['not_affected']) / report['total'] * 100
+                (report['resolved'] + report['resolved_with_pedigree'] + report['exploitable'] + 
+                 report['false_positive'] + report['not_affected']) / report['total'] * 100
                 if report['total'] > 0 else 0
             )
         }
@@ -1958,7 +1977,7 @@ class VexKernelChecker:
                 else:
                     if 'state' in analysis:
                         state = analysis['state']
-                        valid_states = ['affected', 'not_affected', 'under_investigation']
+                        valid_states = ['resolved', 'resolved_with_pedigree', 'exploitable', 'in_triage', 'false_positive', 'not_affected']
                         if state not in valid_states:
                             issues.append(f"{vuln_prefix}: invalid state '{state}', must be one of {valid_states}")
         
@@ -1971,17 +1990,23 @@ class VexKernelChecker:
         print("="*60)
         
         total = report.get('total', 0)
-        affected = report.get('affected', 0)
+        resolved = report.get('resolved', 0)
+        resolved_with_pedigree = report.get('resolved_with_pedigree', 0)
+        exploitable = report.get('exploitable', 0)
+        in_triage = report.get('in_triage', 0)
+        false_positive = report.get('false_positive', 0)
         not_affected = report.get('not_affected', 0)
-        under_investigation = report.get('under_investigation', 0)
         
         print(f"Total vulnerabilities analyzed: {total}")
         print(f"├─ ✅ Not affected: {not_affected}")
-        print(f"├─ ⚠️  Affected: {affected}")
-        print(f"└─ 🔍 Under investigation: {under_investigation}")
+        print(f"├─ 🔧 Resolved: {resolved}")
+        print(f"├─ 🔧📋 Resolved with pedigree: {resolved_with_pedigree}")
+        print(f"├─ ⚠️  Exploitable: {exploitable}")
+        print(f"├─ ❌ False positive: {false_positive}")
+        print(f"└─ 🔍 In triage: {in_triage}")
         
         if total > 0:
-            completion_rate = ((affected + not_affected) / total) * 100
+            completion_rate = ((resolved + resolved_with_pedigree + exploitable + false_positive + not_affected) / total) * 100
             print(f"\nAnalysis completion rate: {completion_rate:.1f}%")
         
         # Show severity breakdown if available
@@ -1992,21 +2017,21 @@ class VexKernelChecker:
             for severity, count in sorted(by_severity.items()):
                 print(f"  {severity}: {count}")
         
-        # Show affected vulnerabilities if any
-        if affected > 0:
-            print(f"\n⚠️  AFFECTED VULNERABILITIES:")
+        # Show exploitable vulnerabilities if any
+        if exploitable > 0:
+            print(f"\n⚠️  EXPLOITABLE VULNERABILITIES:")
             vulnerabilities = report.get('vulnerabilities', {})
-            affected_list = [
+            exploitable_list = [
                 cve_id for cve_id, details in vulnerabilities.items() 
-                if details.get('state') == 'affected'
+                if details.get('state') == 'exploitable'
             ]
-            for cve_id in sorted(affected_list[:10]):  # Show first 10
+            for cve_id in sorted(exploitable_list[:10]):  # Show first 10
                 vuln_details = vulnerabilities[cve_id]
                 detail = vuln_details.get('detail', 'No details available')
                 print(f"  • {cve_id}: {detail}")
             
-            if len(affected_list) > 10:
-                print(f"  ... and {len(affected_list) - 10} more")
+            if len(exploitable_list) > 10:
+                print(f"  ... and {len(exploitable_list) - 10} more")
         
         print("="*60)
 
@@ -2259,8 +2284,8 @@ class VexKernelChecker:
         
         if not all_config_options:
             return VulnerabilityAnalysis(
-                state=VulnerabilityState.UNDER_INVESTIGATION,
-                justification=Justification.COMPONENT_NOT_PRESENT,
+                state=VulnerabilityState.IN_TRIAGE,
+                justification=Justification.CODE_NOT_PRESENT,
                 response=Response.CAN_NOT_FIX,
                 detail="No configuration options found - manual review needed",
                 timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -2269,8 +2294,8 @@ class VexKernelChecker:
         # Check if using only default enabled options
         if all_config_options <= self.ENABLED_DEFAULT_OPTIONS:
             return VulnerabilityAnalysis(
-                state=VulnerabilityState.AFFECTED,
-                justification=Justification.VULNERABLE_CODE_PRESENT,
+                state=VulnerabilityState.EXPLOITABLE,
+                justification=Justification.REQUIRES_CONFIGURATION,
                 response=Response.UPDATE,
                 detail=f"Uses default enabled options: {', '.join(all_config_options)}",
                 timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -2295,8 +2320,8 @@ class VexKernelChecker:
                 detail_parts.append(f"Architecture ({self.arch}): {', '.join(enabled_configs & arch_configs)}")
             
             return VulnerabilityAnalysis(
-                state=VulnerabilityState.AFFECTED,
-                justification=Justification.VULNERABLE_CODE_PRESENT,
+                state=VulnerabilityState.EXPLOITABLE,
+                justification=Justification.REQUIRES_CONFIGURATION,
                 response=Response.UPDATE,
                 detail="; ".join(detail_parts),
                 timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -2304,7 +2329,7 @@ class VexKernelChecker:
         else:
             return VulnerabilityAnalysis(
                 state=VulnerabilityState.NOT_AFFECTED,
-                justification=Justification.COMPONENT_NOT_PRESENT,
+                justification=Justification.CODE_NOT_PRESENT,
                 response=Response.WILL_NOT_FIX,
                 detail=f"Required configs not enabled: {', '.join(disabled_configs)}",
                 timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -2650,21 +2675,27 @@ def main():
             checker.print_performance_stats()
         
         # Final summary
-        affected_count = report.get('affected', 0)
+        exploitable_count = report.get('exploitable', 0)
         not_affected_count = report.get('not_affected', 0)
-        under_investigation_count = report.get('under_investigation', 0)
+        in_triage_count = report.get('in_triage', 0)
+        resolved_count = report.get('resolved', 0)
+        resolved_with_pedigree_count = report.get('resolved_with_pedigree', 0)
+        false_positive_count = report.get('false_positive', 0)
         
         print(f"\n🎯 Final Summary:")
         print(f"   ✅ Not affected: {not_affected_count}")
-        print(f"   ⚠️  Affected: {affected_count}")
-        print(f"   🔍 Under investigation: {under_investigation_count}")
+        print(f"   🔧 Resolved: {resolved_count}")
+        print(f"   🔧📋 Resolved with pedigree: {resolved_with_pedigree_count}")
+        print(f"   ⚠️  Exploitable: {exploitable_count}")
+        print(f"   ❌ False positive: {false_positive_count}")
+        print(f"   🔍 In triage: {in_triage_count}")
         
-        if affected_count > 0:
-            print(f"\n⚠️  Warning: {affected_count} vulnerabilities may affect this kernel")
+        if exploitable_count > 0:
+            print(f"\n⚠️  Warning: {exploitable_count} vulnerabilities may affect this kernel")
             print("   Review analysis details and consider patches or config changes")
         
-        if under_investigation_count > 0:
-            print(f"\n🔍 Note: {under_investigation_count} vulnerabilities need manual review")
+        if in_triage_count > 0:
+            print(f"\n🔍 Note: {in_triage_count} vulnerabilities need manual review")
             
         return 0
             

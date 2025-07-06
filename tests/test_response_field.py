@@ -78,7 +78,7 @@ class TestResponseField(unittest.TestCase):
         
         analysis = VulnerabilityAnalysis(
             state=VulnerabilityState.NOT_AFFECTED,
-            justification=Justification.COMPONENT_NOT_PRESENT,
+            justification=Justification.CODE_NOT_PRESENT,
             response=Response.WILL_NOT_FIX,
             detail="Test analysis",
             timestamp="2024-01-01T00:00:00Z"
@@ -96,7 +96,7 @@ class TestResponseField(unittest.TestCase):
         
         # Verify values
         self.assertEqual(result_dict["state"], "not_affected")
-        self.assertEqual(result_dict["justification"], "component_not_present")
+        self.assertEqual(result_dict["justification"], "code_not_present")
         self.assertEqual(result_dict["response"], "will_not_fix")
         self.assertEqual(result_dict["detail"], "Test analysis")
     
