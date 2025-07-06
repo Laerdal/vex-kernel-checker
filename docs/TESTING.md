@@ -25,6 +25,11 @@ make test
 
 # Using test runner directly
 python3 tests/run_tests.py
+
+# Run specific test category
+python3 tests/test_response_field.py      # Response field tests
+python3 tests/test_error_handling.py      # Error handling tests
+python3 tests/test_kernel_filtering.py    # Kernel filtering tests
 ```
 
 ### Quick Validation

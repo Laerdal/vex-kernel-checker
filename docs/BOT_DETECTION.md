@@ -46,7 +46,7 @@ When kernel.org blocks access, the tool automatically tries:
 
 ### Option 1: Use Config-Only Mode
 ```bash
-python vex-kernel-checker.py --vex-file example.json --config-only
+python3 vex-kernel-checker.py --vex-file example.json --config-only
 ```
 This skips patch checking entirely and relies on kernel configuration analysis.
 
@@ -59,7 +59,7 @@ This skips patch checking entirely and relies on kernel configuration analysis.
 Add delays between requests:
 ```bash
 # Run with verbose mode to see what's happening
-python vex-kernel-checker.py --verbose --vex-file example.json
+python3 vex-kernel-checker.py --verbose --vex-file example.json
 ```
 
 ### Option 4: Different Network/VPN
@@ -70,19 +70,19 @@ Bot detection often uses IP reputation, so changing your IP address may help.
 ### For CI/CD Environments
 ```bash
 # Use config-only mode for automated builds
-python vex-kernel-checker.py --config-only --vex-file build.json
+python3 vex-kernel-checker.py --config-only --vex-file build.json
 ```
 
 ### For Development
 ```bash
 # Enable verbose mode to understand failures
-python vex-kernel-checker.py --verbose --vex-file dev.json
+python3 vex-kernel-checker.py --verbose --vex-file dev.json
 ```
 
 ### For Security Audits
 ```bash
 # Try full analysis but fall back gracefully
-python vex-kernel-checker.py --vex-file audit.json
+python3 vex-kernel-checker.py --vex-file audit.json
 # Manual verification if patches can't be accessed
 ```
 

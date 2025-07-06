@@ -15,6 +15,7 @@ You now have a **production-ready, sophisticated cybersecurity tool** that addre
 ### 🔍 **Technical Sophistication**
 - **Advanced Makefile parsing** with recursive includes and variable expansion
 - **Patch analysis** from NVD API with Selenium WebDriver integration
+- **Smart patch URL extraction** from NVD API responses (not VEX files)
 - **Architecture-aware filtering** (ARM-focused with multi-arch support)
 - **VEX format compliance** with proper metadata tracking
 

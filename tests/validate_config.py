@@ -12,7 +12,7 @@ import json
 import argparse
 import subprocess
 from pathlib import Path
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 
 def check_python_version() -> Tuple[bool, str]:
     """Check if Python version is compatible."""
@@ -183,7 +183,7 @@ def check_kernel_source(kernel_source_path: str) -> Tuple[bool, List[str]]:
     
     return len([i for i in issues if not i.startswith('INFO:')]) == 0, issues
 
-def check_webdriver_setup(webdriver_path: str = None) -> Tuple[bool, List[str]]:
+def check_webdriver_setup(webdriver_path: Optional[str] = None) -> Tuple[bool, List[str]]:
     """Check WebDriver setup if provided."""
     issues = []
     
@@ -223,7 +223,7 @@ def check_tool_accessibility() -> Tuple[bool, List[str]]:
     
     # Get the directory where this script is located
     script_dir = Path(__file__).parent
-    tool_path = script_dir.parent / "vex-kernel-checker.py"
+    tool_path = script_dir.parent / "../vex-kernel-checker.py"
     
     if not tool_path.exists():
         return False, [f"VEX Kernel Checker not found at: {tool_path}"]
@@ -232,6 +232,8 @@ def check_tool_accessibility() -> Tuple[bool, List[str]]:
     try:
         import importlib.util
         spec = importlib.util.spec_from_file_location("vex_kernel_checker", tool_path)
+        if spec is None or spec.loader is None:
+            return False, ["Error: Could not create module spec for VEX Kernel Checker"]
         vkc_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(vkc_module)
         issues.append("INFO: VEX Kernel Checker imports successfully")
@@ -241,7 +243,7 @@ def check_tool_accessibility() -> Tuple[bool, List[str]]:
     return True, issues
 
 def validate_configuration(vex_file: str, kernel_config: str, kernel_source: str, 
-                         webdriver_path: str = None, api_key: str = None) -> Dict:
+                         webdriver_path: Optional[str] = None, api_key: Optional[str] = None) -> Dict:
     """Run complete configuration validation."""
     results = {
         'overall_status': True,

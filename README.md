@@ -16,6 +16,45 @@ VEX Kernel Checker is an advanced vulnerability analysis tool that correlates CV
 - **Makefile parsing** - Analyzes build system dependencies
 - **Architecture awareness** - Considers target architecture implications
 
+## Project Structure
+
+```
+vex-kernel-checker/
+├── vex-kernel-checker.py          # Main application script
+├── README.md                      # Project documentation
+├── requirements.txt               # Python dependencies
+├── Dockerfile                     # Container build configuration
+├── Makefile                       # Build and test automation
+├── CHANGELOG.md                   # Version history
+├── CONTRIBUTING.md                # Contribution guidelines
+├── LICENSE                        # MIT license
+├── SECURITY.md                    # Security policy
+├── .github/                       # GitHub workflows and templates
+├── docs/                          # Comprehensive documentation
+│   ├── README.md                  # Documentation index and guide
+│   ├── FINAL_IMPLEMENTATION_SUMMARY.md  # Complete implementation guide
+│   ├── TESTING.md                 # Testing procedures
+│   ├── MIGRATION_HISTORY.md       # Development history
+│   ├── features/                  # Feature-specific documentation
+│   ├── publication/               # Publication guides
+│   └── [other core docs]         # Technical documentation
+├── tests/                         # Test suite
+│   ├── test_response_field.py     # Response field tests
+│   ├── test_error_handling.py     # Error handling tests
+│   ├── test_kernel_filtering.py   # Kernel filtering tests
+│   ├── run_tests.py               # Test runner
+│   └── [other test files]        # Comprehensive test coverage
+├── examples/                      # Sample data and configurations
+│   ├── README.md                  # Usage examples
+│   ├── test_demo.config           # Sample kernel config
+│   ├── test_vex.json              # Sample VEX file
+│   └── [other samples]           # Test data and examples
+└── scripts/                       # Utility scripts
+    ├── setup.sh                   # Environment setup
+    ├── simple_demo.py             # Basic usage demo
+    └── [other utilities]         # Development tools
+```
+
 ## Key Features
 
 ### 🚀 **Performance Optimized**

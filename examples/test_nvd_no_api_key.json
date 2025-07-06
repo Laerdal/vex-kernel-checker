@@ -1,0 +1,37 @@
+{
+  "bomFormat": "CycloneDX",
+  "metadata": {
+    "timestamp": "2025-07-06T16:00:00Z",
+    "tools": [
+      {
+        "name": "VEX Test Generator",
+        "version": "1.0"
+      }
+    ]
+  },
+  "specVersion": "1.5",
+  "version": 1,
+  "vulnerabilities": [
+    {
+      "analysis": {
+        "detail": "Unable to determine configuration requirements",
+        "justification": "component_not_present",
+        "state": "under_investigation",
+        "timestamp": "2025-07-06T15:44:27Z"
+      },
+      "description": "Linux kernel vulnerability (testing NVD API without key)",
+      "id": "CVE-2024-26581",
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": 7.8,
+          "severity": "high"
+        }
+      ],
+      "source": {
+        "name": "NVD",
+        "url": "https://nvd.nist.gov/"
+      }
+    }
+  ]
+}

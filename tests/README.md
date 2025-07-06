@@ -18,13 +18,13 @@ Comprehensive test suite covering:
 **Usage:**
 ```bash
 # Run all tests
-python tests/test_vex_kernel_checker.py
+python3 tests/test_vex_kernel_checker.py
 
 # Run with verbose output
-python tests/test_vex_kernel_checker.py -v
+python3 tests/test_vex_kernel_checker.py -v
 
 # Run specific test class
-python -m unittest tests.test_vex_kernel_checker.TestVexKernelChecker -v
+python3 -m unittest tests.test_vex_kernel_checker.TestVexKernelChecker -v
 ```
 
 ### 2. Test Runner (`run_tests.py`)
@@ -38,19 +38,19 @@ Advanced test runner with additional features:
 **Usage:**
 ```bash
 # Run all tests
-python tests/run_tests.py
+python3 tests/run_tests.py
 
 # Run with coverage reporting
-python tests/run_tests.py --coverage
+python3 tests/run_tests.py --coverage
 
 # Run specific test pattern
-python tests/run_tests.py --pattern "test_initialization"
+python3 tests/run_tests.py --pattern "test_initialization"
 
 # Quick smoke test
-python tests/run_tests.py --quick
+python3 tests/run_tests.py --quick
 
 # Check dependencies only
-python tests/run_tests.py --check-deps
+python3 tests/run_tests.py --check-deps
 ```
 
 ### 3. Performance Benchmarking (`benchmark.py`)
@@ -72,16 +72,16 @@ Comprehensive performance testing suite:
 **Usage:**
 ```bash
 # Run full benchmark suite
-python tests/benchmark.py
+python3 tests/benchmark.py
 
 # Quiet mode (less verbose output)
-python tests/benchmark.py --quiet
+python3 tests/benchmark.py --quiet
 
 # Custom iterations per test
-python tests/benchmark.py --iterations 5
+python3 tests/benchmark.py --iterations 5
 
 # Save results to JSON
-python tests/benchmark.py --output benchmark_results.json
+python3 tests/benchmark.py --output benchmark_results.json
 ```
 
 ### 4. Configuration Validation (`validate_config.py`)
@@ -102,13 +102,13 @@ Comprehensive validation tool for user environments:
 **Usage:**
 ```bash
 # Basic validation
-python tests/validate_config.py \
+python3 tests/validate_config.py \
   --vex-file examples/test_real_cve.json \
   --kernel-config /path/to/.config \
   --kernel-source /path/to/kernel/source
 
 # Full configuration with WebDriver and API key
-python tests/validate_config.py \
+python3 tests/validate_config.py \
   --vex-file examples/test_real_cve.json \
   --kernel-config /path/to/.config \
   --kernel-source /path/to/kernel/source \
@@ -116,10 +116,10 @@ python tests/validate_config.py \
   --api-key your-nvd-api-key
 
 # Quiet mode (show only failures)
-python tests/validate_config.py --quiet [options...]
+python3 tests/validate_config.py --quiet [options...]
 
 # Save results to JSON
-python tests/validate_config.py --json-output validation_results.json [options...]
+python3 tests/validate_config.py --json-output validation_results.json [options...]
 ```
 
 ## Test Categories
@@ -152,32 +152,32 @@ python tests/validate_config.py --json-output validation_results.json [options..
 ### Development Environment
 ```bash
 # Quick validation during development
-python tests/run_tests.py --quick
+python3 tests/run_tests.py --quick
 
 # Run tests with coverage for code quality
-python tests/run_tests.py --coverage
+python3 tests/run_tests.py --coverage
 ```
 
 ### CI/CD Pipeline
 ```bash
 # Automated testing with JSON output
-python tests/run_tests.py --quiet
-python tests/validate_config.py --json-output ci_validation.json [...]
+python3 tests/run_tests.py --quiet
+python3 tests/validate_config.py --json-output ci_validation.json [...]
 ```
 
 ### Performance Analysis
 ```bash
 # Comprehensive performance analysis
-python tests/benchmark.py --output performance_baseline.json
+python3 tests/benchmark.py --output performance_baseline.json
 
 # Compare performance across changes
-python tests/benchmark.py --iterations 10 --output new_performance.json
+python3 tests/benchmark.py --iterations 10 --output new_performance.json
 ```
 
 ### User Environment Validation
 ```bash
 # Help users validate their setup
-python tests/validate_config.py [user-specific-options]
+python3 tests/validate_config.py [user-specific-options]
 ```
 
 ## Test Data
@@ -200,8 +200,8 @@ Required packages for full testing functionality:
 
 Install with:
 ```bash
-pip install -r requirements.txt
-pip install coverage psutil  # Additional test dependencies
+pip3 install -r requirements.txt
+pip3 install coverage psutil  # Additional test dependencies
 ```
 
 ## Continuous Integration
@@ -215,13 +215,13 @@ The test suite is designed to work well in CI/CD environments:
 Example CI usage:
 ```bash
 # Validate environment
-python tests/validate_config.py --quiet --json-output ci_validation.json [...]
+python3 tests/validate_config.py --quiet --json-output ci_validation.json [...]
 
 # Run tests with coverage
-python tests/run_tests.py --coverage --quiet
+python3 tests/run_tests.py --coverage --quiet
 
 # Performance regression testing
-python tests/benchmark.py --quiet --output ci_performance.json
+python3 tests/benchmark.py --quiet --output ci_performance.json
 ```
 
 ## Contributing to Tests
@@ -249,25 +249,25 @@ When adding new features to VEX Kernel Checker:
 **Import Errors**:
 ```bash
 # Ensure VEX Kernel Checker is importable
-python tests/validate_config.py --vex-file examples/test_real_cve.json [...]
+python3 tests/validate_config.py --vex-file examples/test_real_cve.json [...]
 ```
 
 **Missing Dependencies**:
 ```bash
 # Check and install missing packages
-python tests/run_tests.py --check-deps
+python3 tests/run_tests.py --check-deps
 ```
 
 **Performance Issues**:
 ```bash
 # Analyze performance bottlenecks
-python tests/benchmark.py --verbose
+python3 tests/benchmark.py --verbose
 ```
 
 **WebDriver Issues**:
 ```bash
 # Validate WebDriver setup
-python tests/validate_config.py --webdriver /path/to/msedgedriver [...]
+python3 tests/validate_config.py --webdriver /path/to/msedgedriver [...]
 ```
 
 ### Test Environment Issues
@@ -289,7 +289,7 @@ The test suite aims for:
 
 Current coverage can be checked with:
 ```bash
-python tests/run_tests.py --coverage
+python3 tests/run_tests.py --coverage
 ```
 
 This will generate an HTML coverage report in `htmlcov/index.html` for detailed analysis.

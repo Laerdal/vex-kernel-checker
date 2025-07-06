@@ -1,32 +1,22 @@
 #!/usr/bin/env python3
 """
-VEX Kernel Checker - A tool for analyzing CVE vulnerabilities against kernel configurations.
+VEX Kernel Checker - A production-ready tool for analyzing CVE vulnerabilities against kernel configurations.
 
 This script processes VEX (Vulnerability Exploitability eXchange) files and checks
 whether CVEs are applicable to a given kernel configuration by analyzing patch files
-and Makefile configurations.
+and Makefile configurations with intelligent filtering.
 
-MIT License
+Key Features:
+- Fetches CVE details from NVD API with rate limiting
+- Downloads patches from GitHub, kernel.org, and other sources
+- Analyzes Makefiles to determine required configuration options
+- Filters out build-time, debug, and irrelevant configuration options
+- Architecture-aware analysis (ARM64, x86, etc.)
+- XEN-aware filtering for non-XEN systems
+- Parallel processing for performance
+- Comprehensive caching for efficiency
 
-Copyright (c) 2025
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+MIT License - Copyright (c) 2025
 """
 
 import argparse
@@ -34,9 +24,12 @@ import json
 import os
 import re
 import requests
+import sys
 import time
 import glob
 import traceback
+import signal
+import threading
 import functools
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -44,17 +37,27 @@ from functools import lru_cache
 from pathlib import Path
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, Set, Tuple, Union
-from selenium import webdriver
-from selenium.webdriver.edge.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import SessionNotCreatedException, WebDriverException, TimeoutException, NoSuchElementException
+from typing import Dict, List, Optional, Set, Tuple, Union, Any
 
-# Performance tracking utilities
+# Selenium imports for web scraping
+try:
+    from selenium import webdriver
+    from selenium.webdriver.edge.service import Service
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    from selenium.common.exceptions import TimeoutException, SessionNotCreatedException, NoSuchElementException, WebDriverException
+    SELENIUM_AVAILABLE = True
+except ImportError:
+    SELENIUM_AVAILABLE = False
+    print("Warning: Selenium not available. WebDriver functionality disabled.")
+
+
+# Global settings for performance monitoring
+ENABLE_TIMING_OUTPUT = False  # Set to True to show detailed method timing
+
 def timed_method(func):
-    """Decorator to track method execution time."""
+    """Decorator to time method execution for performance monitoring."""
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         start_time = time.time()
@@ -62,43 +65,55 @@ def timed_method(func):
         end_time = time.time()
         duration = end_time - start_time
         
-        # Get class name if this is a method
-        class_name = ""
-        if args and hasattr(args[0], '__class__'):
-            class_name = args[0].__class__.__name__ + "."
+        # Only print timing if globally enabled or if instance has detailed_timing enabled
+        show_timing = ENABLE_TIMING_OUTPUT
         
-        print(f"⏱️  {class_name}{func.__name__}: {duration:.3f}s")
+        # Check if this is a method call and the instance has detailed timing enabled
+        if not show_timing and args and hasattr(args[0], '__class__'):
+            instance = args[0]
+            if hasattr(instance, 'detailed_timing') and instance.detailed_timing:
+                show_timing = True
+        
+        if show_timing:
+            # Get class name if this is a method
+            class_name = ""
+            if args and hasattr(args[0], '__class__'):
+                class_name = f"{args[0].__class__.__name__}."
+            
+            print(f"⏱️  {class_name}{func.__name__}: {duration:.3f}s")
+        
         return result
     return wrapper
 
+
 class PerformanceTracker:
-    """Track performance metrics across the application."""
+    """Advanced performance tracking for optimization and debugging."""
     
     def __init__(self):
         self.timings = {}
         self.cache_stats = {}
-    
+        
     def start_timer(self, name: str):
-        """Start a named timer."""
+        """Start timing an operation."""
         self.timings[name] = {'start': time.time()}
-    
+        
     def end_timer(self, name: str):
-        """End a named timer and record duration."""
-        if name in self.timings and 'start' in self.timings[name]:
+        """End timing an operation."""
+        if name in self.timings:
             self.timings[name]['duration'] = time.time() - self.timings[name]['start']
-    
+            
     def record_cache_hit(self, cache_name: str):
         """Record a cache hit."""
         if cache_name not in self.cache_stats:
             self.cache_stats[cache_name] = {'hits': 0, 'misses': 0}
         self.cache_stats[cache_name]['hits'] += 1
-    
+        
     def record_cache_miss(self, cache_name: str):
         """Record a cache miss."""
         if cache_name not in self.cache_stats:
             self.cache_stats[cache_name] = {'hits': 0, 'misses': 0}
         self.cache_stats[cache_name]['misses'] += 1
-    
+        
     def print_summary(self):
         """Print performance summary."""
         print("\n" + "="*60)
@@ -135,43 +150,50 @@ class PerformanceTracker:
 # Global performance tracker
 perf_tracker = PerformanceTracker()
 
+
 class VulnerabilityState(Enum):
-    """Enumeration of possible vulnerability analysis states."""
-    NOT_AFFECTED = "not_affected"
+    """Enumeration of possible vulnerability states."""
     AFFECTED = "affected"
+    NOT_AFFECTED = "not_affected"
     UNDER_INVESTIGATION = "under_investigation"
-    
+
 
 class Justification(Enum):
     """Enumeration of justification reasons for vulnerability state."""
     COMPONENT_NOT_PRESENT = "component_not_present"
     VULNERABLE_CODE_NOT_PRESENT = "vulnerable_code_not_present"
-    VULNERABLE_CODE_NOT_IN_EXECUTE_PATH = "vulnerable_code_not_in_execute_path"
-    VULNERABLE_CODE_CANNOT_BE_CONTROLLED_BY_ADVERSARY = "vulnerable_code_cannot_be_controlled_by_adversary"
-    INLINE_MITIGATIONS_ALREADY_EXIST = "inline_mitigations_already_exist"
+    VULNERABLE_CODE_PRESENT = "vulnerable_code_present"
     REQUIRES_CONFIGURATION = "requires_configuration"
-    REQUIRES_DEPENDENCY = "requires_dependency"
-    REQUIRES_ENVIRONMENT = "requires_environment"
+    PROTECTED_BY_MITIGATIONS = "protected_by_mitigations"
+
+
+class Response(Enum):
+    """Enumeration of response actions for vulnerabilities."""
+    CAN_NOT_FIX = "can_not_fix"
+    WILL_NOT_FIX = "will_not_fix"
+    UPDATE = "update"
+    ROLLBACK = "rollback"
+    WORKAROUND_AVAILABLE = "workaround_available"
 
 
 @dataclass
 class VulnerabilityAnalysis:
-    """Data class representing a vulnerability analysis result."""
+    """Data class representing the analysis of a vulnerability."""
     state: VulnerabilityState
     justification: Optional[Justification] = None
+    response: Optional[Response] = None
     detail: Optional[str] = None
-    response: Optional[List[str]] = None
     timestamp: Optional[str] = None
     
-    def to_dict(self) -> Dict:
-        """Convert to dictionary format for VEX output."""
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
         result = {"state": self.state.value}
         if self.justification:
             result["justification"] = self.justification.value
+        if self.response:
+            result["response"] = self.response.value
         if self.detail:
             result["detail"] = self.detail
-        if self.response:
-            result["response"] = self.response
         if self.timestamp:
             result["timestamp"] = self.timestamp
         return result
@@ -179,18 +201,32 @@ class VulnerabilityAnalysis:
 
 @dataclass
 class CVEInfo:
-    """Enhanced CVE information structure."""
-    
-    def __init__(self, cve_id: str, severity: Optional[str] = None, cvss_score: Optional[float] = None,
-                 description: Optional[str] = None, published_date: Optional[str] = None,
-                 last_modified: Optional[str] = None, patch_urls: Optional[List[str]] = None):
-        self.cve_id = cve_id
-        self.severity = severity
-        self.cvss_score = cvss_score
-        self.description = description
-        self.published_date = published_date
-        self.last_modified = last_modified
-        self.patch_urls = patch_urls if patch_urls is not None else []
+    """Data class for CVE information."""
+    cve_id: str
+    severity: Optional[str] = None
+    cvss_score: Optional[float] = None
+    description: Optional[str] = None
+    patch_urls: Optional[List[str]] = None
+    published_date: Optional[str] = None
+    modified_date: Optional[str] = None
+
+
+# Global interrupt flag for graceful shutdown
+_interrupt_requested = threading.Event()
+
+def signal_handler(signum, frame):
+    """Handle interrupt signals gracefully."""
+    print(f"\n🛑 Interrupt signal received (signal {signum}). Gracefully shutting down...")
+    _interrupt_requested.set()
+
+def check_interrupt():
+    """Check if an interrupt has been requested."""
+    if _interrupt_requested.is_set():
+        raise KeyboardInterrupt("Analysis interrupted by user request")
+
+# Set up signal handlers
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
 
 
 class VexKernelChecker:
@@ -217,7 +253,19 @@ class VexKernelChecker:
     _api_rate_lock = threading.Lock()
     _last_global_api_call = 0.0
     
-    # Class constants
+    # Configuration constants for performance optimization
+    API_RATE_LIMIT_DELAY = 1.5  # seconds between API calls (NVD requires delays)
+    API_MAX_RETRIES = 3
+    API_BACKOFF_FACTOR = 2.0
+    MAX_PARALLEL_WORKERS = 2  # Limited to prevent NVD API rate limiting
+    MAKEFILE_CACHE_SIZE = 5000  # Increased for better hit rate
+    CONFIG_CACHE_SIZE = 2000
+    SOURCE_ANALYSIS_CACHE_SIZE = 1000
+    MAX_MAKEFILE_SEARCH_FILES = 100  # Focus on most relevant files
+    MAX_KCONFIG_RECURSION_DEPTH = 20  # Prevent deep recursion
+    MAX_INCLUDE_FILES_PER_MAKEFILE = 5  # Limit processing scope
+    
+    # Class constants for intelligent filtering
     IGNORED_URLS = {
         "https://codereview.qt-project.org",
         "https://github.com/qt",
@@ -238,148 +286,148 @@ class VexKernelChecker:
         "net/wireless/silabs": "staging"
     }
     
-    # Rate limiting for API calls (increased for better reliability)
-    API_RATE_LIMIT_DELAY = 1.5  # seconds between API calls (NVD API requires 3+ second delays)
-    API_MAX_RETRIES = 3  # Maximum number of retries for API calls
-    API_BACKOFF_FACTOR = 2.0  # Exponential backoff factor
-    
-    # Further reduced concurrency to prevent API rate limiting issues
-    MAX_PARALLEL_WORKERS = 2  # Further reduced to prevent NVD API rate limiting
-    MAKEFILE_CACHE_SIZE = 5000  # Increased from 2000 for better hit rate
-    CONFIG_CACHE_SIZE = 2000  # Increased from 1000 for better hit rate
-    SOURCE_ANALYSIS_CACHE_SIZE = 1000  # New cache for source file analysis
-    
-    # Optimized search limits for performance
-    MAX_MAKEFILE_SEARCH_FILES = 100  # Reduced from 200 to focus on most relevant files
-    MAX_KCONFIG_RECURSION_DEPTH = 20  # Reduced from 50 to prevent deep recursion
-    MAX_INCLUDE_FILES_PER_MAKEFILE = 5  # Reduced from 10 to limit processing scope
-    
-    # New performance optimization flags
+    # Performance optimization flags
     ENABLE_AGGRESSIVE_CACHING = True
     ENABLE_PARALLEL_FILE_IO = True
     ENABLE_SMART_SEARCH_ORDERING = True
     
-    def __init__(self, verbose: bool = False, api_key: str = None, edge_driver_path: str = None, disable_patch_checking: bool = False, analyze_all_cves: bool = False):
-        """Initialize the VEX Kernel Checker.
-        
-        Args:
-            verbose: Enable verbose logging
-            api_key: NVD API key for fetching CVE details (optional, will disable web-based patch fetching if not provided)
-            edge_driver_path: Path to Edge WebDriver executable (optional, will disable web-based patch fetching if not provided)
-            disable_patch_checking: Explicitly disable patch checking (for config-only analysis)
-            analyze_all_cves: Analyze all CVEs regardless of kernel relevance (default: only analyze kernel-related CVEs)
-        """
+    def __init__(self, verbose: bool = False, api_key: Optional[str] = None, 
+                 edge_driver_path: Optional[str] = None, disable_patch_checking: bool = False, 
+                 analyze_all_cves: bool = False, arch: Optional[str] = None, 
+                 arch_config: Optional[str] = None, detailed_timing: bool = False):
+        """Initialize the VEX Kernel Checker."""
         self.verbose = verbose
+        self.detailed_timing = detailed_timing  # Controls whether to show method timing
         self.api_key = api_key
         self.edge_driver_path = edge_driver_path
-        self.last_api_call = 0.0
-        self._processed_cves = set()  # Track processed CVEs to avoid duplicates
-        self.analyze_all_cves = analyze_all_cves  # Flag for controlling CVE filtering
+        # Enable patch checking by default (NVD API doesn't require API key)
+        # API key is optional and only provides higher rate limits
+        self.check_patches = not disable_patch_checking
+        self.analyze_all_cves = analyze_all_cves
+        self.arch = arch
+        self.arch_config = arch_config
         
-        # Determine patch checking capability
-        if disable_patch_checking:
-            self.check_patches = False
-            if self.verbose:
-                print("Patch checking explicitly disabled - config-only analysis mode")
-        elif not api_key or not edge_driver_path:
-            self.check_patches = False
-            if self.verbose:
-                print("Patch checking disabled - missing API key or WebDriver (will attempt config-only analysis)")
-        else:
-            self.check_patches = True
-            if self.verbose:
-                print("Patch checking enabled - full CVE analysis mode")
+        # Initialize caches
+        self._makefile_cache = {}
+        self._config_cache = {}
+        self._kconfig_cache = {}
+        self._path_cache = {}
+        self._source_analysis_cache = {}
+        self._directory_priority_cache = {}
+        self._makefile_location_cache = {}
+        self._file_content_cache = {}
         
-        # Performance optimization caches
-        self._makefile_cache = {}  # Cache for parsed Makefile content
-        self._config_cache = {}  # Cache for resolved configuration options
-        self._kconfig_cache = {}  # Cache for Kconfig dependencies
-        self._path_cache = {}  # Cache for path-based inference results
-        
-        # New advanced performance caches
-        self._source_analysis_cache = {}  # Cache for source file analysis results
-        self._directory_priority_cache = {}  # Cache for directory search prioritization
-        self._makefile_location_cache = {}  # Cache for makefile locations
-        
-        # Precompiled regex patterns for ultra-fast pattern matching
-        self._advanced_config_patterns = self._compile_advanced_config_patterns()
-        self._optimized_source_patterns = self._compile_optimized_source_patterns()
-        self._patch_patterns = self._compile_patch_patterns()
-        
-        # Performance tracking
         # Performance tracking
         self._cache_hits = {'makefile': 0, 'config': 0, 'source': 0, 'path': 0}
         self._cache_misses = {'makefile': 0, 'config': 0, 'source': 0, 'path': 0}
+        self._processed_cves = set()
         
-        # File content cache for ultra-fast I/O
-        self._file_content_cache = {}
+        # Compile regex patterns for performance
+        self._config_patterns = self._compile_config_patterns()
+        self._patch_patterns = self._compile_patch_patterns()
+        self._advanced_config_patterns = self._compile_advanced_config_patterns()
+        
+        if self.verbose:
+            print(f"VEX Kernel Checker initialized:")
+            print(f"  Patch checking: {'enabled' if self.check_patches else 'disabled'}")
+            print(f"  API key: {'provided' if self.api_key else 'not provided'}")
+            if not self.api_key:
+                print(f"  Note: NVD API key not required but provides higher rate limits")
+            print(f"  WebDriver: {'available' if self.edge_driver_path else 'not available'}")
+
+    def _compile_config_patterns(self) -> List[re.Pattern]:
+        """Compile regex patterns for configuration extraction."""
+        return [
+            re.compile(r'diff --git a/(.*)\.c b/'),
+            re.compile(r'#ifn?def\s+(CONFIG_[A-Z0-9_]+)'),
+            re.compile(r'#if.*defined\s*\(\s*(CONFIG_[A-Z0-9_]+)\s*\)'),
+            re.compile(r'IS_ENABLED\s*\(\s*(CONFIG_[A-Z0-9_]+)\s*\)'),
+            re.compile(r'obj-\$\((CONFIG_[A-Z0-9_]+)\)\s*[+:]?='),
+            re.compile(r'CONFIG_[A-Z0-9_]+')
+        ]
+
+    def _compile_patch_patterns(self) -> List[re.Pattern]:
+        """Compile patch-specific regex patterns."""
+        return [
+            re.compile(r'diff --git a/(.*)\.c b/'),
+            re.compile(r'#ifn?def\s+(CONFIG_[A-Z0-9_]+)'),
+            re.compile(r'#if.*defined\s*\(\s*(CONFIG_[A-Z0-9_]+)\s*\)'),
+            re.compile(r'IS_ENABLED\s*\(\s*(CONFIG_[A-Z0-9_]+)\s*\)')
+        ]
+
+    def _compile_advanced_config_patterns(self) -> Dict[str, List[re.Pattern]]:
+        """Compile advanced regex patterns for config detection."""
+        return {
+            'primary': [
+                re.compile(r'obj-\$\((CONFIG_[A-Z0-9_]+)\)\s*[+:]?=\s*.*?\.o\b', re.IGNORECASE),
+                re.compile(r'([a-zA-Z0-9_-]+)-objs-\$\((CONFIG_[A-Z0-9_]+)\)', re.IGNORECASE),
+                re.compile(r'^(CONFIG_[A-Z0-9_]+)\s*[=:]', re.MULTILINE),
+            ],
+            'conditional': [
+                re.compile(r'ifdef\s+(CONFIG_[A-Z0-9_]+)', re.IGNORECASE),
+                re.compile(r'ifeq\s*\(\s*\$\((CONFIG_[A-Z0-9_]+)\)', re.IGNORECASE),
+            ],
+            'source_hints': [
+                re.compile(r'#ifn?def\s+(CONFIG_[A-Z0-9_]+)', re.IGNORECASE),
+                re.compile(r'IS_ENABLED\s*\(\s*(CONFIG_[A-Z0-9_]+)\s*\)', re.IGNORECASE),
+            ]
+        }
 
     def _get_cached_file_content(self, file_path: str) -> str:
-        """Get file content with caching for ultra-fast I/O."""
+        """Get file content with caching."""
         if file_path in self._file_content_cache:
             return self._file_content_cache[file_path]
         
         try:
             with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                 content = f.read()
+            self._file_content_cache[file_path] = content
             
-            # Cache the content with size limit
-            if len(self._file_content_cache) < 1000:  # Limit cache size
-                self._file_content_cache[file_path] = content
+            # Limit cache size
+            if len(self._file_content_cache) > 1000:
+                oldest_keys = list(self._file_content_cache.keys())[:200]
+                for key in oldest_keys:
+                    del self._file_content_cache[key]
             
             return content
-        except Exception:
+        except Exception as e:
+            if self.verbose:
+                print(f"Error reading file {file_path}: {e}")
             return ""
 
     def _get_cached_makefile_vars(self, makefile_path: str) -> Dict[str, str]:
-        """Get Makefile variables with caching."""
-        cache_key = f"vars:{makefile_path}"
-        if cache_key in self._makefile_cache:
-            return self._makefile_cache[cache_key]
+        """Get makefile variables with caching."""
+        if makefile_path in self._makefile_cache:
+            return self._makefile_cache[makefile_path]
         
-        variables = {}
+        makefile_vars = {}
         try:
             content = self._get_cached_file_content(makefile_path)
-            if content:
-                # Extract variable assignments (VAR = value or VAR := value)
-                var_pattern = re.compile(r'^([A-Z_][A-Z0-9_]*)\s*[:+]?=\s*(.*)$', re.MULTILINE)
-                for match in var_pattern.finditer(content):
-                    var_name = match.group(1)
-                    var_value = match.group(2).strip()
-                    variables[var_name] = var_value
+            for line in content.split('\n'):
+                line = line.strip()
+                if '=' in line and not line.startswith('#'):
+                    parts = line.split('=', 1)
+                    if len(parts) == 2:
+                        var_name = parts[0].strip()
+                        var_value = parts[1].strip()
+                        makefile_vars[var_name] = var_value
             
-            # Cache the variables
-            self._makefile_cache[cache_key] = variables
-        except Exception:
-            pass
+            self._makefile_cache[makefile_path] = makefile_vars
+            
+            # Limit cache size
+            if len(self._makefile_cache) > self.MAKEFILE_CACHE_SIZE:
+                oldest_keys = list(self._makefile_cache.keys())[:100]
+                for key in oldest_keys:
+                    del self._makefile_cache[key]
+                    
+        except Exception as e:
+            if self.verbose:
+                print(f"Error parsing makefile {makefile_path}: {e}")
         
-        return variables
+        return makefile_vars
 
     def clear_all_caches(self):
-        """Clear all internal caches to start fresh analysis.
-        
-        This method clears all the performance caches including:
-        - Makefile parsing cache
-        - Configuration option cache
-        - Kconfig dependencies cache
-        - Path-based inference cache
-        - Source file analysis cache
-        - Directory prioritization cache
-        - Makefile location cache
-        - File content cache
-        """
-        cache_sizes_before = {
-            'makefile': len(self._makefile_cache),
-            'config': len(self._config_cache),
-            'kconfig': len(self._kconfig_cache),
-            'path': len(self._path_cache),
-            'source_analysis': len(self._source_analysis_cache),
-            'directory_priority': len(self._directory_priority_cache),
-            'makefile_location': len(self._makefile_location_cache),
-            'file_content': len(self._file_content_cache)
-        }
-        
-        # Clear all caches
+        """Clear all caches and reset counters."""
         self._makefile_cache.clear()
         self._config_cache.clear()
         self._kconfig_cache.clear()
@@ -389,987 +437,774 @@ class VexKernelChecker:
         self._makefile_location_cache.clear()
         self._file_content_cache.clear()
         
-        # Reset cache statistics
-        self._cache_hits = {'makefile': 0, 'config': 0, 'source': 0, 'path': 0}
-        self._cache_misses = {'makefile': 0, 'config': 0, 'source': 0, 'path': 0}
+        # Reset performance counters
+        for cache_type in self._cache_hits:
+            self._cache_hits[cache_type] = 0
+            self._cache_misses[cache_type] = 0
+        
+        self._processed_cves.clear()
         
         if self.verbose:
-            total_entries = sum(cache_sizes_before.values())
-            print(f"Cleared all caches - removed {total_entries} cached entries:")
-            for cache_name, size in cache_sizes_before.items():
-                if size > 0:
-                    print(f"  - {cache_name}: {size} entries")
+            print("All caches cleared")
 
+    # Static validation methods
     @staticmethod
     def validate_file_path(file_path: str) -> str:
-        """Validate that a file exists at the given path."""
-        if not os.path.isfile(file_path):
-            raise argparse.ArgumentTypeError(f"File not found: {file_path}")
-        return file_path
+        """Validate and normalize file path."""
+        if not file_path or not isinstance(file_path, str):
+            raise ValueError("File path must be a non-empty string")
+        
+        normalized_path = os.path.abspath(file_path)
+        if not os.path.exists(normalized_path):
+            raise FileNotFoundError(f"File not found: {normalized_path}")
+        
+        return normalized_path
 
     @staticmethod
     def validate_directory_path(dir_path: str) -> str:
-        """Validate that a directory exists at the given path."""
-        if not os.path.isdir(dir_path):
-            raise argparse.ArgumentTypeError(f"Directory not found: {dir_path}")
-        return dir_path
+        """Validate and normalize directory path."""
+        if not dir_path or not isinstance(dir_path, str):
+            raise ValueError("Directory path must be a non-empty string")
+        
+        normalized_path = os.path.abspath(dir_path)
+        if not os.path.isdir(normalized_path):
+            raise NotADirectoryError(f"Directory not found: {normalized_path}")
+        
+        return normalized_path
 
     @staticmethod
     def validate_api_key(api_key: str) -> str:
-        """Validate API key format."""
-        if not re.match(r'^[a-f0-9-]{36}$', api_key):
-            raise argparse.ArgumentTypeError("Invalid API key format")
-        return api_key
+        """Validate NVD API key format."""
+        if not api_key or not isinstance(api_key, str):
+            raise ValueError("API key must be a non-empty string")
+        
+        # Basic format validation for NVD API key
+        if len(api_key) < 30:
+            raise ValueError("API key appears to be too short")
+        
+        return api_key.strip()
 
     @staticmethod
     def validate_edge_driver_path(driver_path: str) -> str:
-        """Validate Edge WebDriver path with enhanced checks."""
-        if not os.path.isfile(driver_path):
-            raise argparse.ArgumentTypeError(f"Edge WebDriver not found: {driver_path}")
+        """Validate Edge WebDriver path."""
+        if not driver_path or not isinstance(driver_path, str):
+            raise ValueError("Edge driver path must be a non-empty string")
         
-        # Check if file is executable (on Unix-like systems)
-        if hasattr(os, 'access') and not os.access(driver_path, os.X_OK):
-            print(f"Warning: WebDriver file may not be executable: {driver_path}")
-            print("You may need to run: chmod +x {driver_path}")
+        normalized_path = os.path.abspath(driver_path)
+        if not os.path.exists(normalized_path):
+            raise FileNotFoundError(f"Edge driver not found: {normalized_path}")
         
-        # Basic validation of file name
-        filename = os.path.basename(driver_path).lower()
-        if 'edge' not in filename and 'msedge' not in filename:
-            print(f"Warning: File name doesn't appear to be an Edge WebDriver: {filename}")
-            print("Expected names include: msedgedriver, edgedriver, etc.")
+        if not os.access(normalized_path, os.X_OK):
+            raise PermissionError(f"Edge driver is not executable: {normalized_path}")
         
-        return driver_path
+        return normalized_path
 
+    # File loading utilities
     @staticmethod
     def load_vex_file(file_path: str) -> Dict:
-        """Load VEX file from JSON."""
-        print(f"Loading VEX file from {file_path}...")
-        with open(file_path, 'r') as file:
-            return json.load(file)
+        """Load and validate VEX file."""
+        validated_path = VexKernelChecker.validate_file_path(file_path)
+        
+        with open(validated_path, 'r') as f:
+            return json.load(f)
 
     @staticmethod
     def load_kernel_config(config_path: str) -> List[str]:
-        """Load kernel configuration and extract enabled options."""
-        print(f"Loading kernel configuration from {config_path}...")
-        strip_patterns = {"=m": "", "=y": ""}
+        """Load kernel configuration file."""
+        validated_path = VexKernelChecker.validate_file_path(config_path)
         
-        with open(config_path, 'r') as file:
-            enabled_options = []
-            for line in file:
+        config_options = []
+        with open(validated_path, 'r') as f:
+            for line in f:
                 line = line.strip()
-                if line.endswith('=y') or line.endswith('=m'):
-                    cleaned_line = VexKernelChecker._replace_multiple_substrings(line, strip_patterns)
-                    enabled_options.append(cleaned_line)
-            return enabled_options
+                if line and not line.startswith('#'):
+                    # Extract CONFIG_* options
+                    if line.startswith('CONFIG_') and '=' in line:
+                        config_name = line.split('=')[0]
+                        config_options.append(config_name)
+        
+        return config_options
 
     @staticmethod
     def _replace_multiple_substrings(text: str, replacements: Dict[str, str]) -> str:
-        """Replace multiple substrings in text based on replacement dictionary."""
-        pattern = re.compile("|".join(re.escape(key) for key in replacements.keys()))
-        return pattern.sub(lambda match: replacements[match.group(0)], text)
+        """Replace multiple substrings in text efficiently."""
+        for old, new in replacements.items():
+            text = text.replace(old, new)
+        return text
+
+    def _interruptible_sleep(self, duration: float):
+        """Sleep for the given duration while checking for interrupts."""
+        chunks = max(1, int(duration / 0.5))  # Sleep in 0.5s chunks
+        chunk_duration = duration / chunks
+        
+        for _ in range(chunks):
+            time.sleep(chunk_duration)
+            check_interrupt()
+
+    def _format_eta(self, eta_seconds: float) -> str:
+        """Format ETA (estimated time remaining) into a human-readable string."""
+        if eta_seconds <= 0:
+            return "Done"
+        
+        if eta_seconds < 60:
+            return f"{eta_seconds:.0f}s"
+        elif eta_seconds < 3600:
+            minutes = int(eta_seconds // 60)
+            seconds = int(eta_seconds % 60)
+            return f"{minutes}m {seconds}s"
+        else:
+            hours = int(eta_seconds // 3600)
+            remaining_seconds = eta_seconds % 3600
+            minutes = int(remaining_seconds // 60)
+            if hours >= 24:
+                days = int(hours // 24)
+                hours = int(hours % 24)
+                return f"{days}d {hours}h {minutes}m"
+            else:
+                return f"{hours}h {minutes}m"
 
     def is_kernel_related_cve(self, cve_info: CVEInfo) -> bool:
-        """Determine if a CVE is related to the Linux kernel.
-        
-        This method analyzes various aspects of the CVE to determine if it's
-        kernel-related, including:
-        - CVE description text
-        - Patch URLs pointing to kernel repositories
-        - Reference URLs and tags
-        
-        Args:
-            cve_info: CVE information object
-            
-        Returns:
-            True if the CVE appears to be kernel-related, False otherwise
-        """
-        if not cve_info:
+        """Check if a CVE is related to the Linux kernel."""
+        if not cve_info or not cve_info.description:
             return False
         
-        # Check description for kernel-related keywords
-        description = cve_info.description.lower() if cve_info.description else ""
-        
-        # Strong kernel indicators in description
+        description = cve_info.description.lower()
         kernel_keywords = [
-            'linux kernel', 'kernel', 'vmlinux', 'kmod', 'ksymtab',
-            'syscall', 'system call', 'kernel module', 'kernel space',
-            'kernel driver', 'kernel panic', 'kernel oops', 'kernel crash',
-            'kernel memory', 'kernel buffer', 'kernel stack', 'kernel heap',
-            'kernel thread', 'kernel process', 'kernel scheduler',
-            'kernel filesystem', 'kernel network', 'kernel security',
-            'kernel vulnerability', 'kernel bug', 'kernel fix',
-            'kernel patch', 'kernel source', 'kernel code',
-            'kernel implementation', 'kernel subsystem',
-            'device driver', 'kernel api', 'kernel function',
-            'kernel data structure', 'kernel interface'
+            'linux kernel', 'kernel', 'linux', 'driver', 'subsystem',
+            'filesystem', 'networking', 'memory management', 'scheduler',
+            'security module', 'kernel module', 'device driver',
+            'kernel space', 'syscall', 'system call'
         ]
         
-        # Check for kernel keywords in description
-        if any(keyword in description for keyword in kernel_keywords):
-            if self.verbose:
-                print(f"CVE {cve_info.cve_id} identified as kernel-related based on description keywords")
-            return True
-        
-        # Check patch URLs for kernel repositories
-        if cve_info.patch_urls:
-            kernel_repo_indicators = [
-                'git.kernel.org',
-                'github.com/torvalds/linux',
-                'lore.kernel.org',
-                'patchwork.kernel.org',
-                'kernel.org',
-                'linux-kernel',
-                'stable/linux'
-            ]
-            
-            for patch_url in cve_info.patch_urls:
-                if any(indicator in patch_url.lower() for indicator in kernel_repo_indicators):
-                    if self.verbose:
-                        print(f"CVE {cve_info.cve_id} identified as kernel-related based on patch URL: {patch_url}")
-                    return True
-        
-        # Additional heuristics based on CVE ID patterns
-        # Some CVE databases have patterns for kernel CVEs
-        cve_id = cve_info.cve_id
-        
-        # If we have patch URLs but none are clearly kernel-related,
-        # and description doesn't contain kernel keywords, likely not kernel-related
-        if cve_info.patch_urls and not any(keyword in description for keyword in [
-            'linux', 'kernel', 'driver', 'syscall', 'module'
-        ]):
-            # Check for non-kernel indicators
-            non_kernel_indicators = [
-                'apache', 'nginx', 'mysql', 'postgresql', 'mongodb',
-                'nodejs', 'python', 'java', 'php', 'ruby', 'perl',
-                'docker', 'kubernetes', 'openssl', 'gnutls',
-                'firefox', 'chrome', 'webkit', 'browser',
-                'wordpress', 'drupal', 'joomla',
-                'windows', 'macos', 'android', 'ios'
-            ]
-            
-            if any(indicator in description for indicator in non_kernel_indicators):
-                if self.verbose:
-                    print(f"CVE {cve_info.cve_id} identified as non-kernel-related based on software indicators")
-                return False
-        
-        # If no clear indicators either way, err on the side of caution
-        # and include it (conservative approach)
-        if self.verbose:
-            print(f"CVE {cve_info.cve_id} classification unclear - including for analysis (conservative approach)")
-        
-        return True
+        return any(keyword in description for keyword in kernel_keywords)
 
+    @timed_method
     def fetch_cve_details(self, cve_id: str) -> Optional[CVEInfo]:
-        """Fetch enhanced CVE details from NVD API with thread-safe rate limiting and retry logic.
+        """Fetch CVE details from NVD API with rate limiting and caching."""
+        # Check for interrupt before starting
+        check_interrupt()
         
-        Args:
-            cve_id: CVE identifier
+        # Rate limiting - ensure proper delays between API calls
+        with self._api_rate_lock:
+            current_time = time.time()
+            time_since_last_call = current_time - self._last_global_api_call
             
-        Returns:
-            CVEInfo object with enhanced CVE details or None if failed
-        """
+            if time_since_last_call < self.API_RATE_LIMIT_DELAY:
+                sleep_time = self.API_RATE_LIMIT_DELAY - time_since_last_call
+                if self.verbose:
+                    print(f"Rate limiting: sleeping {sleep_time:.2f}s before NVD API call")
+                
+                # Sleep in small chunks to allow interrupts
+                chunks = int(sleep_time / 0.5) + 1
+                for _ in range(chunks):
+                    time.sleep(min(0.5, sleep_time))
+                    sleep_time -= 0.5
+                    check_interrupt()
+                    if sleep_time <= 0:
+                        break
+            
+            self._last_global_api_call = time.time()
+
+        # Check cache first
+        if cve_id in self._config_cache:
+            self._cache_hits['config'] += 1
+            return self._config_cache[cve_id]
+
+        self._cache_misses['config'] += 1
+
+        base_url = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+        params = {'cveId': cve_id}
+        
+        if self.api_key:
+            headers = {'apiKey': self.api_key}
+        else:
+            headers = {}
+
         for attempt in range(self.API_MAX_RETRIES):
+            check_interrupt()  # Check for interrupt before each attempt
+            
             try:
-                # Thread-safe rate limiting using class-level lock
-                with VexKernelChecker._api_rate_lock:
-                    current_time = time.time()
-                    time_since_last_call = current_time - VexKernelChecker._last_global_api_call
-                    delay = self.API_RATE_LIMIT_DELAY
+                if self.verbose:
+                    print(f"Fetching CVE details for {cve_id} from NVD API (attempt {attempt + 1})")
+                
+                response = requests.get(base_url, params=params, headers=headers, timeout=30)
+                
+                if response.status_code == 200:
+                    data = response.json()
                     
-                    # Add extra delay for retries (exponential backoff)
-                    if attempt > 0:
-                        delay *= (self.API_BACKOFF_FACTOR ** attempt)
+                    if 'vulnerabilities' in data and data['vulnerabilities']:
+                        vuln_data = data['vulnerabilities'][0]['cve']
+                        
+                        # Extract CVE information
+                        cve_info = CVEInfo(
+                            cve_id=cve_id,
+                            description=vuln_data.get('descriptions', [{}])[0].get('value', ''),
+                            published_date=vuln_data.get('published', ''),
+                            modified_date=vuln_data.get('lastModified', '')
+                        )
+                        
+                        # Extract severity and CVSS if available
+                        metrics = vuln_data.get('metrics', {})
+                        if 'cvssMetricV31' in metrics and metrics['cvssMetricV31']:
+                            cvss_data = metrics['cvssMetricV31'][0]['cvssData']
+                            cve_info.cvss_score = cvss_data.get('baseScore')
+                            cve_info.severity = cvss_data.get('baseSeverity', '').upper()
+                        elif 'cvssMetricV30' in metrics and metrics['cvssMetricV30']:
+                            cvss_data = metrics['cvssMetricV30'][0]['cvssData']
+                            cve_info.cvss_score = cvss_data.get('baseScore')
+                            cve_info.severity = cvss_data.get('baseSeverity', '').upper()
+                        elif 'cvssMetricV2' in metrics and metrics['cvssMetricV2']:
+                            cvss_data = metrics['cvssMetricV2'][0]['cvssData']
+                            cve_info.cvss_score = cvss_data.get('baseScore')
+                            # Map CVSS v2 severity
+                            score = cvss_data.get('baseScore', 0)
+                            if score >= 7.0:
+                                cve_info.severity = 'HIGH'
+                            elif score >= 4.0:
+                                cve_info.severity = 'MEDIUM'
+                            else:
+                                cve_info.severity = 'LOW'
+                        
+                        # Extract patch URLs from references
+                        patch_urls = []
+                        references = vuln_data.get('references', [])
+                        for ref in references:
+                            url = ref.get('url', '')
+                            if any(domain in url for domain in ['git.kernel.org', 'github.com', 'gitlab.com']):
+                                patch_urls.append(url)
+                        
+                        cve_info.patch_urls = patch_urls
+                        
+                        # Cache the result
+                        self._config_cache[cve_id] = cve_info
+                        
                         if self.verbose:
-                            print(f"Retry {attempt + 1}/{self.API_MAX_RETRIES} for CVE {cve_id} with {delay:.2f}s delay")
-                    
-                    if time_since_last_call < delay:
-                        sleep_time = delay - time_since_last_call
-                        if self.verbose:
-                            print(f"Rate limiting: sleeping for {sleep_time:.2f}s before API call")
-                        time.sleep(sleep_time)
-                    
-                    VexKernelChecker._last_global_api_call = time.time()
-                
-                api_url = f'https://services.nvd.nist.gov/rest/json/cves/2.0?cveId={cve_id}'
-                headers = {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'
-                }
-                
-                # Only add API key header if we have one
-                if self.api_key:
-                    headers['apiKey'] = self.api_key
-                
-                response = requests.get(api_url, headers=headers, timeout=30)
-                
-                # Handle rate limiting specifically
-                if response.status_code == 429:  # Too Many Requests
-                    if attempt < self.API_MAX_RETRIES - 1:
-                        retry_after = response.headers.get('Retry-After', '60')
-                        wait_time = float(retry_after) if retry_after.isdigit() else 60
-                        print(f"Rate limited by NVD API for CVE {cve_id}. Waiting {wait_time}s before retry {attempt + 2}")
-                        time.sleep(wait_time)
-                        continue
+                            print(f"Successfully fetched CVE details for {cve_id}")
+                        
+                        return cve_info
                     else:
-                        print(f"Max retries exceeded for CVE {cve_id} due to rate limiting")
+                        if self.verbose:
+                            print(f"No CVE data found for {cve_id}")
                         return None
                 
-                response.raise_for_status()
+                elif response.status_code == 429:  # Rate limited
+                    backoff_time = self.API_BACKOFF_FACTOR ** attempt
+                    if self.verbose:
+                        print(f"Rate limited by NVD API, backing off for {backoff_time}s")
+                    self._interruptible_sleep(backoff_time)
+                    continue
                 
-                cve_data = response.json()
-                
-                if self.verbose:
-                    print(f"Data received from NVD for CVE {cve_id}: {json.dumps(cve_data, indent=2)}")
-                
-                # Extract enhanced CVE information
-                vulnerabilities = cve_data.get('vulnerabilities', [])
-                if not vulnerabilities:
+                elif response.status_code == 404:
+                    if self.verbose:
+                        print(f"CVE {cve_id} not found in NVD")
                     return None
+                
+                else:
+                    if self.verbose:
+                        print(f"NVD API error {response.status_code}: {response.text}")
                     
-                cve_details = vulnerabilities[0].get('cve', {})
-                
-                # Extract CVSS score and severity
-                severity = None
-                cvss_score = None
-                metrics = cve_details.get('metrics', {})
-                
-                # Try CVSS v3.1 first, then v3.0, then v2.0
-                for version in ['cvssMetricV31', 'cvssMetricV30', 'cvssMetricV2']:
-                    if version in metrics and metrics[version]:
-                        metric = metrics[version][0]  # Take first metric
-                        cvss_data = metric.get('cvssData', {})
-                        cvss_score = cvss_data.get('baseScore')
-                        severity = cvss_data.get('baseSeverity', metric.get('baseSeverity'))
-                        break
-                
-                # Extract patch URLs
-                patch_urls = []
-                references = cve_details.get('references', [])
-                for reference in references:
-                    url = reference.get('url', '')
-                    tags = reference.get('tags', [])
-                    if 'Patch' in tags and not self._url_ignored(url):
-                        patch_urls.append(url)
-                
-                return CVEInfo(
-                    cve_id=cve_id,
-                    severity=severity,
-                    cvss_score=cvss_score,
-                    patch_urls=patch_urls,
-                    description=cve_details.get('descriptions', [{}])[0].get('value', ''),
-                    published_date=cve_details.get('published', ''),
-                    last_modified=cve_details.get('lastModified', '')
-                )
-                
+                    if attempt < self.API_MAX_RETRIES - 1:
+                        backoff_time = self.API_BACKOFF_FACTOR ** attempt
+                        self._interruptible_sleep(backoff_time)
+                        continue
+                    else:
+                        return None
+                        
             except requests.exceptions.RequestException as e:
+                if self.verbose:
+                    print(f"Network error fetching CVE {cve_id}: {e}")
+                
                 if attempt < self.API_MAX_RETRIES - 1:
-                    wait_time = self.API_RATE_LIMIT_DELAY * (self.API_BACKOFF_FACTOR ** attempt)
-                    print(f"Network error for CVE {cve_id} (attempt {attempt + 1}): {e}. Retrying in {wait_time:.2f}s")
-                    time.sleep(wait_time)
+                    backoff_time = self.API_BACKOFF_FACTOR ** attempt
+                    self._interruptible_sleep(backoff_time)
                     continue
                 else:
-                    print(f"Failed to fetch CVE details for {cve_id} after {self.API_MAX_RETRIES} attempts: {e}")
                     return None
-            except Exception as e:
-                print(f"Unexpected error fetching CVE details for {cve_id}: {e}")
-                return None
         
         return None
 
     def _url_ignored(self, url: str) -> bool:
-        """Check if URL should be ignored for patch extraction."""
-        return any(url.startswith(ignored_url) for ignored_url in self.IGNORED_URLS)
+        """Check if URL should be ignored based on domain patterns."""
+        return any(ignored_domain in url for ignored_domain in self.IGNORED_URLS)
 
     def extract_patch_url(self, cve_info: CVEInfo) -> Optional[str]:
-        """Extract patch URL from CVE information, prioritizing GitHub sources.
-        
-        Args:
-            cve_info: CVE information object
-            
-        Returns:
-            Best available patch URL (GitHub preferred) or None if not found
-        """
+        """Extract the best patch URL from CVE information, prioritizing GitHub."""
         if not cve_info.patch_urls:
             return None
         
-        # Prioritize GitHub URLs first
-        github_urls = [url for url in cve_info.patch_urls if 'github.com' in url.lower()]
-        if github_urls:
-            patch_url = github_urls[0]
-            if self.verbose:
-                print(f"Using prioritized GitHub patch URL: {patch_url}")
-            return patch_url
+        # Prioritize GitHub URLs first (better API availability and reliability)
+        for url in cve_info.patch_urls:
+            if self._url_ignored(url):
+                continue
+                
+            if 'github.com' in url:
+                return url
         
-        # Fall back to first available patch URL
-        patch_url = cve_info.patch_urls[0]
-        if self.verbose:
-            print(f"Using patch URL: {patch_url}")
-        return patch_url
+        # Then try kernel.org URLs
+        for url in cve_info.patch_urls:
+            if self._url_ignored(url):
+                continue
+                
+            if 'git.kernel.org' in url:
+                return url
+        
+        # Fall back to any non-ignored URL
+        for url in cve_info.patch_urls:
+            if not self._url_ignored(url):
+                return url
+        
+        return None
 
     def get_alternative_patch_urls(self, original_url: str) -> List[str]:
-        """Generate alternative patch URLs, prioritizing GitHub sources.
-        
-        Args:
-            original_url: Original patch URL
-            
-        Returns:
-            List of alternative URLs to try, with GitHub URLs prioritized
-        """
+        """Generate alternative patch URLs for better success rate, prioritizing GitHub."""
         alternatives = []
         
-        # Extract commit ID from various URL patterns
+        # Extract commit ID if possible
         commit_id = self._extract_commit_id_from_url(original_url)
+        if not commit_id:
+            return alternatives
         
-        if commit_id:
-            # GitHub URLs are prioritized first
-            github_urls = [
-                f"https://github.com/torvalds/linux/commit/{commit_id}.patch",
-                f"https://github.com/torvalds/linux/commit/{commit_id}.diff",
-                f"https://raw.githubusercontent.com/torvalds/linux/{commit_id}/.patch"
-            ]
-            alternatives.extend(github_urls)
-            
-            # Then kernel.org alternatives
-            kernel_org_urls = [
-                f"https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/patch/?id={commit_id}",
-                f"https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/patch/?id={commit_id}",
-                f"https://lore.kernel.org/lkml/{commit_id}/raw"
-            ]
-            alternatives.extend(kernel_org_urls)
+        # Check if this is a kernel.org stable/c URL and try to find GitHub equivalent
+        github_url_from_kernel_org = self._convert_kernel_org_to_github(original_url, commit_id)
         
-        # Try to convert kernel.org URLs to GitHub equivalents
-        if 'git.kernel.org' in original_url and commit_id:
-            github_alt = f"https://github.com/torvalds/linux/commit/{commit_id}.patch"
-            if github_alt not in alternatives:
-                alternatives.insert(0, github_alt)  # Prioritize at the beginning
+        # Prioritize GitHub URLs first (better API availability and reliability)
+        github_templates = [
+            f"https://github.com/torvalds/linux/commit/{commit_id}.patch",
+            f"https://github.com/torvalds/linux/commit/{commit_id}.diff",
+            f"https://github.com/torvalds/linux/commit/{commit_id}",
+        ]
         
-        # Try to extract patch URLs from lore.kernel.org patterns
-        if 'lore.kernel.org' in original_url:
-            # Extract message ID or commit reference for GitHub lookup
-            lore_patterns = [
-                r'lore\.kernel\.org/[^/]+/([a-f0-9]{12,40})',
-                r'msgid=([^&]+)',
-            ]
-            for pattern in lore_patterns:
-                match = re.search(pattern, original_url)
-                if match and len(match.group(1)) >= 12:
-                    potential_commit = match.group(1)
-                    github_alt = f"https://github.com/torvalds/linux/commit/{potential_commit}.patch"
-                    if github_alt not in alternatives:
-                        alternatives.insert(0, github_alt)
+        # Add the converted GitHub URL at the very beginning if available and different
+        if github_url_from_kernel_org and github_url_from_kernel_org not in github_templates:
+            alternatives.append(github_url_from_kernel_org)
+        
+        # Add GitHub template URLs
+        alternatives.extend(github_templates)
+        
+        # Then kernel.org URLs
+        kernel_org_templates = [
+            f"https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/patch/?id={commit_id}",
+            f"https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/patch/?id={commit_id}",
+            f"https://git.kernel.org/pub/scm/linux/kernel/git/next/linux-next.git/patch/?id={commit_id}",
+        ]
+        
+        # Add the original URL only if it's not already included and not in templates
+        if (original_url not in alternatives and 
+            original_url not in github_templates and 
+            original_url not in kernel_org_templates):
+            alternatives.append(original_url)
+        
+        # Add kernel.org URLs
+        alternatives.extend(kernel_org_templates)
         
         return alternatives
 
     def _extract_commit_id_from_url(self, url: str) -> Optional[str]:
-        """Extract git commit ID from various patch URL formats.
-        
-        Args:
-            url: Patch URL
-            
-        Returns:
-            Commit ID if found, None otherwise
-        """
-        # Common patterns for commit IDs in URLs
-        commit_patterns = [
-            r'(?:commit|id)=([a-f0-9]{12,40})',  # ?id=abcd1234 or ?commit=abcd1234
-            r'/commit/([a-f0-9]{12,40})',        # /commit/abcd1234
-            r'/([a-f0-9]{40})',                  # /abcd1234... (full 40-char hash)
-            r'/([a-f0-9]{12,39})',               # /abcd1234... (12-39 char abbreviated hash)
-            r'patch-([a-f0-9]{12,40})',          # patch-abcd1234
+        """Extract Git commit ID from various URL formats."""
+        # Pattern for GitHub commit URLs
+        github_patterns = [
+            r'github\.com/[^/]+/[^/]+/commit/([a-f0-9]{8,40})',
+            r'github\.com/[^/]+/[^/]+/commit/([a-f0-9]{8,40})\.patch',
+            r'github\.com/[^/]+/[^/]+/commit/([a-f0-9]{8,40})\.diff',
         ]
         
-        for pattern in commit_patterns:
+        # Pattern for kernel.org URLs
+        kernel_org_patterns = [
+            r'git\.kernel\.org/.*[?&]id=([a-f0-9]{8,40})',
+            r'git\.kernel\.org/.*commit.*[?&]h=([a-f0-9]{8,40})',
+            r'git\.kernel\.org/stable/c/([a-f0-9]{8,40})',  # git.kernel.org/stable/c/COMMIT_ID
+            r'git\.kernel\.org/.*/c/([a-f0-9]{8,40})',      # any git.kernel.org/*/c/COMMIT_ID format
+        ]
+        
+        # Pattern for lore.kernel.org
+        lore_patterns = [
+            r'lore\.kernel\.org/[^/]+/([a-f0-9]{8,40})',
+        ]
+        
+        all_patterns = github_patterns + kernel_org_patterns + lore_patterns
+        
+        for pattern in all_patterns:
             match = re.search(pattern, url)
             if match:
                 commit_id = match.group(1)
-                # Validate commit ID format (hex string, reasonable length)
-                if len(commit_id) >= 12 and all(c in '0123456789abcdef' for c in commit_id.lower()):
+                # Validate commit ID length (Git commit IDs are 8-40 hex chars)
+                if len(commit_id) >= 8 and re.match(r'^[a-f0-9]+$', commit_id):
                     return commit_id
         
         return None
 
-    def fetch_patch_with_selenium(self, patch_url: str) -> Optional[str]:
-        """Fetch patch content using Selenium WebDriver with enhanced error handling and fallbacks.
+    def _convert_kernel_org_to_github(self, original_url: str, commit_id: str) -> Optional[str]:
+        """Convert kernel.org URLs to GitHub URLs if the commit exists on GitHub."""
+        # Only process kernel.org URLs
+        if 'git.kernel.org' not in original_url:
+            return None
         
-        Args:
-            patch_url: URL to fetch patch from
-            
-        Returns:
-            Patch content or None if failed
-        """
-        # Try the original URL first
-        result = self._fetch_patch_with_selenium_single(patch_url)
+        # Try the most common GitHub URL format for Linux kernel
+        github_url = f"https://github.com/torvalds/linux/commit/{commit_id}"
         
-        # If original failed due to bot detection or other issues, try alternatives
-        if result is None:
-            alternatives = self.get_alternative_patch_urls(patch_url)
-            for alt_url in alternatives:
+        # Check if the GitHub URL exists with a simple HEAD request
+        try:
+            response = requests.head(github_url, timeout=10)
+            if response.status_code == 200:
                 if self.verbose:
-                    print(f"Trying alternative URL: {alt_url}")
-                result = self._fetch_patch_with_selenium_single(alt_url)
-                if result is not None:
-                    if self.verbose:
-                        print(f"✅ Successfully retrieved patch from alternative URL")
-                    break
-                else:
-                    if self.verbose:
-                        print(f"Alternative URL also failed")
+                    print(f"Found GitHub equivalent for kernel.org URL: {github_url}")
+                return github_url
+        except requests.RequestException:
+            # If we can't check, that's fine - we'll try other URLs
+            pass
         
-        return result
-    
-    def _fetch_patch_with_selenium_single(self, patch_url: str) -> Optional[str]:
-        """Fetch patch content from a single URL using Selenium WebDriver.
-        
-        Args:
-            patch_url: URL to fetch patch from
+        return None
+
+    def fetch_patch_with_selenium(self, patch_url: str) -> Optional[str]:
+        """Fetch patch content using Selenium WebDriver with multiple fallback strategies."""
+        if not SELENIUM_AVAILABLE:
+            if self.verbose:
+                print("Selenium not available, skipping WebDriver-based patch fetching")
+            return None
             
-        Returns:
-            Patch content or None if failed
-        """
+        if not self.edge_driver_path:
+            if self.verbose:
+                print("Edge driver path not configured, skipping WebDriver-based patch fetching")
+            return None
+
+        # Try multiple alternative URLs
+        urls_to_try = self.get_alternative_patch_urls(patch_url)
+        
+        for url in urls_to_try:
+            if self.verbose:
+                print(f"Attempting to fetch patch from: {url}")
+            
+            patch_content = self._fetch_patch_with_selenium_single(url)
+            if patch_content:
+                return patch_content
+        
+        return None
+
+    def _fetch_patch_with_selenium_single(self, patch_url: str) -> Optional[str]:
+        """Fetch patch content from a single URL using Selenium."""
+        if not SELENIUM_AVAILABLE:
+            return None
+            
         driver = None
         try:
-            if self.verbose:
-                print(f"Initializing WebDriver for URL: {patch_url}")
-            
-            # Validate WebDriver path before attempting to use it
-            if not self.edge_driver_path:
-                raise ValueError("Edge WebDriver path is not set")
-            
-            if not os.path.isfile(self.edge_driver_path):
-                raise FileNotFoundError(f"Edge WebDriver not found at: {self.edge_driver_path}")
-            
             service = Service(self.edge_driver_path)
             options = webdriver.EdgeOptions()
-            
-            # Enhanced WebDriver options for better reliability and stealth
             options.add_argument('--headless')
+            options.add_argument('--disable-gpu')
             options.add_argument('--no-sandbox')
             options.add_argument('--disable-dev-shm-usage')
-            options.add_argument('--disable-gpu')
-            options.add_argument('--disable-blink-features=AutomationControlled')
-            options.add_argument('--disable-extensions')
-            options.add_argument('--disable-plugins')
-            options.add_argument('--disable-images')
-            options.add_argument('--disable-javascript')  # Many patches don't need JS
-            options.add_argument('--disable-web-security')
-            options.add_argument('--disable-features=VizDisplayCompositor')
-            options.add_argument('--window-size=1920,1080')
             
-            # Use a more realistic user agent to avoid bot detection
-            options.add_argument('--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-            
-            # Additional stealth options
-            options.add_experimental_option("excludeSwitches", ["enable-automation"])
-            options.add_experimental_option('useAutomationExtension', False)
-            
-            # Set timeouts
-            options.add_argument('--page-load-strategy=eager')
-            
-            if self.verbose:
-                print("Starting Edge WebDriver...")
-            
-            try:
-                driver = webdriver.Edge(service=service, options=options)
-            except SessionNotCreatedException as e:
-                print(f"Failed to create WebDriver session: {e}")
-                print("Possible causes:")
-                print("  - Edge WebDriver version incompatible with installed Edge browser")
-                print("  - Edge browser not installed")
-                print("  - WebDriver permissions issue")
-                return None
-            except WebDriverException as e:
-                print(f"WebDriver initialization failed: {e}")
-                return None
-            
-            # Set timeouts
+            driver = webdriver.Edge(service=service, options=options)
             driver.set_page_load_timeout(30)
-            driver.implicitly_wait(10)
             
             if self.verbose:
-                print(f"Navigating to: {patch_url}")
+                print(f"Loading patch URL: {patch_url}")
             
-            try:
-                driver.get(patch_url)
-                # Wait a moment for any dynamic content/redirects to settle
-                time.sleep(2)
-            except TimeoutException:
-                if self.verbose:
-                    print(f"Timeout while loading page: {patch_url}")
-                    print("The page took too long to load (>30 seconds)")
-                return None
-            except WebDriverException as e:
-                if self.verbose:
-                    print(f"Failed to navigate to URL {patch_url}: {e}")
-                return None
+            driver.get(patch_url)
             
-            # Check for common error pages and bot detection
-            page_title = driver.title.lower()
-            page_source_snippet = driver.page_source[:1000].lower()
-            
-            # Check for bot detection pages
-            bot_detection_indicators = [
-                "making sure you're not a bot", "just a moment", "cloudflare", 
-                "security check", "checking your browser", "please wait",
-                "anti-bot", "ddos protection", "rate limiting"
+            # Try multiple selectors to find patch content
+            selectors = [
+                'pre.highlight',          # GitHub patch view
+                'pre',                    # Generic pre tag
+                '.blob-code-inner',       # GitHub blob view
+                '.file-diff-content',     # Generic diff content
+                'table.diff-table',       # Table-based diff
+                '.diff-content',          # Generic diff class
+                'body'                    # Last resort - entire body
             ]
             
-            if any(indicator in page_title or indicator in page_source_snippet 
-                   for indicator in bot_detection_indicators):
-                if self.verbose:
-                    print(f"⚠️  Bot detection page detected. Page title: '{driver.title}'")
-                    print("This indicates that the website is blocking automated access.")
-                    print("Consider using alternative patch sources or manual verification.")
-                return None
-            
-            # Check for other common error pages
-            if any(error_indicator in page_title for error_indicator in [
-                "oh noes!", "404", "not found", "error", "access denied", "forbidden"
-            ]):
-                if self.verbose:
-                    print(f"Error page detected. Page title: '{driver.title}'")
-                return None
-            
-            # Check if page loaded successfully
-            if not page_title or "loading" in page_title:
-                if self.verbose:
-                    print("Page appears to still be loading or failed to load content")
-                return None
-            
-            if self.verbose:
-                print(f"Page loaded successfully. Title: '{driver.title}'")
-                print("Searching for patch content...")
-            
-            # Try multiple strategies to find patch content
-            patch_content = None
-            
-            # Strategy 1: Look for <pre> tag (most common for patches)
-            try:
-                patch_element = WebDriverWait(driver, 15).until(
-                    EC.presence_of_element_located((By.TAG_NAME, 'pre'))
-                )
-                patch_content = patch_element.text
-                if self.verbose:
-                    print("Found patch content in <pre> tag")
-            except TimeoutException:
-                if self.verbose:
-                    print("No <pre> tag found, trying alternative methods...")
-            
-            # Strategy 2: Look for code blocks
-            if not patch_content:
+            for selector in selectors:
                 try:
-                    code_elements = driver.find_elements(By.TAG_NAME, 'code')
-                    if code_elements:
-                        patch_content = '\n'.join([elem.text for elem in code_elements if elem.text.strip()])
+                    element = driver.find_element(By.CSS_SELECTOR, selector)
+                    content = element.text
+                    
+                    if content and ('diff --git' in content or 'index ' in content or '@@' in content):
                         if self.verbose:
-                            print("Found patch content in <code> tags")
-                except NoSuchElementException:
-                    pass
+                            print(f"Successfully extracted patch content using selector: {selector}")
+                        return content
+                        
+                except Exception:
+                    continue
             
-            # Strategy 3: Look for elements with specific classes or IDs commonly used for patches
-            if not patch_content:
-                selectors_to_try = [
-                    '.diff', '.patch', '#patch', '.code', '.highlight',
-                    '[class*="diff"]', '[class*="patch"]', '[id*="diff"]'
-                ]
-                
-                for selector in selectors_to_try:
-                    try:
-                        elements = driver.find_elements(By.CSS_SELECTOR, selector)
-                        if elements:
-                            patch_content = '\n'.join([elem.text for elem in elements if elem.text.strip()])
-                            if patch_content:
-                                if self.verbose:
-                                    print(f"Found patch content using selector: {selector}")
-                                break
-                    except Exception:
-                        continue
-            
-            # Strategy 4: Last resort - get page source and try to extract patch content
-            if not patch_content:
+            # If no specific selectors work, try the page source
+            page_source = driver.page_source
+            if page_source and ('diff --git' in page_source or 'index ' in page_source):
                 if self.verbose:
-                    print("Attempting to extract patch from page source...")
-                page_source = driver.page_source
+                    print("Extracted patch content from page source")
+                return page_source
                 
-                # Look for common patch patterns in source
-                import re
-                patch_patterns = [
-                    r'<pre[^>]*>(.*?)</pre>',
-                    r'<code[^>]*>(.*?)</code>',
-                    r'diff --git.*?(?=<|$)',
-                ]
-                
-                for pattern in patch_patterns:
-                    matches = re.findall(pattern, page_source, re.DOTALL | re.IGNORECASE)
-                    if matches:
-                        patch_content = '\n'.join(matches)
-                        # Remove HTML tags
-                        patch_content = re.sub(r'<[^>]+>', '', patch_content)
-                        if patch_content.strip():
-                            if self.verbose:
-                                print("Extracted patch content from page source")
-                            break
-            
-            if not patch_content or not patch_content.strip():
-                if self.verbose:
-                    print(f"No patch content found on page: {patch_url}")
-                    print("The page may not contain patch information or uses an unsupported format")
-                return None
-            
             if self.verbose:
-                print(f"Successfully extracted patch content ({len(patch_content)} characters)")
-            
-            return patch_content
-            
-        except FileNotFoundError as e:
-            print(f"File system error: {e}")
+                print("No patch content found with any selector")
             return None
-        except PermissionError as e:
-            print(f"Permission error accessing WebDriver: {e}")
-            print("Try running with appropriate permissions or check file ownership")
-            return None
+            
         except Exception as e:
-            print(f"Unexpected error in WebDriver operation: {e}")
             if self.verbose:
-                import traceback
-                traceback.print_exc()
+                print(f"WebDriver error for {patch_url}: {e}")
             return None
         finally:
             if driver:
                 try:
-                    if self.verbose:
-                        print("Closing WebDriver...")
                     driver.quit()
-                except Exception as e:
-                    if self.verbose:
-                        print(f"Warning: Error while closing WebDriver: {e}")
-                    # Don't re-raise, as this is cleanup
+                except Exception:
+                    pass
 
+    @timed_method  
     def fetch_patch_content_with_github_priority(self, patch_url: str) -> Optional[str]:
-        """Fetch patch content with GitHub prioritized as the first source.
+        """Fetch patch content with GitHub API priority and multiple fallback methods."""
+        if not patch_url:
+            return None
         
-        This method implements the new GitHub-first strategy:
-        1. Try GitHub directly if available
-        2. Extract commit ID and try GitHub alternatives
-        3. Fall back to original URL with Selenium
-        4. Try other alternative sources
-        
-        Args:
-            patch_url: Original patch URL
-            
-        Returns:
-            Patch content or None if all methods fail
-        """
-        if self.verbose:
-            print(f"Fetching patch content for: {patch_url}")
-        
-        # Step 1: If it's already a GitHub URL, try it directly first
-        if 'github.com' in patch_url:
-            if self.verbose:
-                print("Trying GitHub URL directly (no WebDriver needed)")
-            
-            try:
-                response = requests.get(patch_url, timeout=30)
-                response.raise_for_status()
-                if self.verbose:
-                    print("✅ Successfully fetched patch from GitHub (direct)")
-                return response.text
-            except requests.RequestException as e:
-                if self.verbose:
-                    print(f"Direct GitHub request failed: {e}")
-        
-        # Step 2: Extract commit ID and try GitHub alternatives first
+        # Extract commit ID for GitHub API access
         commit_id = self._extract_commit_id_from_url(patch_url)
+        
+        # Try GitHub API first if commit ID is available (regardless of original URL source)
         if commit_id:
-            if self.verbose:
-                print(f"Extracted commit ID: {commit_id}, trying GitHub alternatives")
-            
-            # Try multiple GitHub URL formats
-            github_urls = [
-                f"https://github.com/torvalds/linux/commit/{commit_id}.patch",
-                f"https://github.com/torvalds/linux/commit/{commit_id}.diff"
-            ]
-            
-            for github_url in github_urls:
-                try:
-                    if self.verbose:
-                        print(f"Trying GitHub URL: {github_url}")
-                    response = requests.get(github_url, timeout=30)
-                    response.raise_for_status()
-                    if self.verbose:
-                        print("✅ Successfully fetched patch from GitHub alternative")
-                    return response.text
-                except requests.RequestException as e:
-                    if self.verbose:
-                        print(f"GitHub alternative failed: {e}")
-                    continue
-        
-        # Step 3: Fall back to original URL with Selenium (for sites requiring JavaScript)
-        if self.verbose:
-            print("GitHub alternatives failed, trying original URL with WebDriver")
-        
-        patch_content = self.fetch_patch_with_selenium(patch_url)
-        if patch_content:
-            if self.verbose:
-                print("✅ Successfully fetched patch using WebDriver")
-            return patch_content
-        
-        # Step 4: Try other alternative sources as last resort
-        if self.verbose:
-            print("WebDriver also failed, trying remaining alternatives")
-        
-        alternatives = self.get_alternative_patch_urls(patch_url)
-        # Skip GitHub URLs since we already tried them above
-        non_github_alternatives = [url for url in alternatives if 'github.com' not in url]
-        
-        for alt_url in non_github_alternatives:
-            if self.verbose:
-                print(f"Trying alternative URL: {alt_url}")
-            
-            # Try direct request first for kernel.org, lore.kernel.org, etc.
-            try:
-                response = requests.get(alt_url, timeout=30)
-                response.raise_for_status()
+            github_content = self.fetch_patch_from_github(commit_id)
+            if github_content:
                 if self.verbose:
-                    print(f"✅ Successfully fetched patch from alternative: {alt_url}")
-                return response.text
-            except requests.RequestException:
-                # If direct request fails, try with WebDriver
-                alt_content = self._fetch_patch_with_selenium_single(alt_url)
-                if alt_content:
-                    if self.verbose:
-                        print(f"✅ Successfully fetched patch from alternative with WebDriver: {alt_url}")
-                    return alt_content
+                    print("Successfully fetched patch from GitHub API")
+                return github_content
         
-        if self.verbose:
-            print("❌ All patch fetching methods failed")
+        # Try direct HTTP request to original URL
+        try:
+            if self.verbose:
+                print(f"Attempting direct HTTP request to: {patch_url}")
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'text/plain, text/html, application/json, */*'
+            }
+            
+            response = requests.get(patch_url, headers=headers, timeout=30)
+            response.raise_for_status()
+            
+            content = response.text
+            if content and ('diff --git' in content or 'index ' in content or '@@' in content):
+                if self.verbose:
+                    print("Successfully fetched patch via direct HTTP")
+                return content
+                
+        except Exception as e:
+            if self.verbose:
+                print(f"Direct HTTP request failed: {e}")
+        
+        # Try alternative URLs (GitHub URLs will be prioritized in the list)
+        alternative_urls = self.get_alternative_patch_urls(patch_url)
+        for alt_url in alternative_urls[:5]:  # Try top 5 alternatives
+            if alt_url == patch_url:  # Skip original URL
+                continue
+                
+            try:
+                response = requests.get(alt_url, headers=headers, timeout=20)
+                response.raise_for_status()
+                
+                content = response.text
+                if content and ('diff --git' in content or 'index ' in content or '@@' in content):
+                    if self.verbose:
+                        print(f"Successfully fetched patch from alternative URL: {alt_url}")
+                    return content
+                    
+            except Exception as e:
+                if self.verbose:
+                    print(f"Alternative URL {alt_url} failed: {e}")
+                continue
+        
+        # Final fallback: try Selenium WebDriver
+        if SELENIUM_AVAILABLE and self.edge_driver_path:
+            if self.verbose:
+                print("Trying WebDriver as final fallback")
+            return self.fetch_patch_with_selenium(patch_url)
+        
         return None
 
     @staticmethod
     def fetch_patch_from_github(commit_id: str) -> Optional[str]:
-        """Fetch patch from GitHub using commit ID.
-        
-        Args:
-            commit_id: Git commit ID
-            
-        Returns:
-            Patch content or None if failed
-        """
+        """Fetch patch content from GitHub API."""
         try:
-            github_url = f"https://github.com/torvalds/linux/commit/{commit_id}.patch"
-            response = requests.get(github_url)
-            response.raise_for_status()
-            return response.text
-        except requests.RequestException as e:
-            print(f"Failed to fetch patch information from GitHub: {e}")
-            return None
+            github_urls = [
+                f"https://api.github.com/repos/torvalds/linux/commits/{commit_id}",
+                f"https://patch-diff.githubusercontent.com/raw/torvalds/linux/pull/{commit_id}.patch"
+            ]
+            
+            for url in github_urls:
+                response = requests.get(url, timeout=30)
+                if response.status_code == 200:
+                    if 'api.github.com' in url:
+                        # Parse API response
+                        data = response.json()
+                        if 'files' in data:
+                            # Construct patch from API data
+                            patch_lines = []
+                            for file_data in data['files']:
+                                if 'patch' in file_data:
+                                    patch_lines.append(file_data['patch'])
+                            return '\n'.join(patch_lines)
+                    else:
+                        # Direct patch content
+                        return response.text
+                        
+        except Exception:
+            pass
+        
+        return None
 
+    @timed_method
     def extract_sourcefiles(self, patch_info: str) -> Set[str]:
-        """Extract source files from patch information with optimized pattern matching.
+        """Extract source file paths from patch content."""
+        source_files = set()
         
-        Args:
-            patch_info: Patch content as string
+        if not patch_info:
+            return source_files
+        
+        # Common patterns for file paths in patches
+        patterns = [
+            self._config_patterns[0],  # diff --git pattern
+            re.compile(r'\+\+\+ b/(.*)'),  # +++ b/filename
+            re.compile(r'--- a/(.*)'),    # --- a/filename  
+            re.compile(r'diff --git a/(.*) b/'),  # diff --git a/file b/file
+        ]
+        
+        for line in patch_info.split('\n'):
+            for pattern in patterns:
+                matches = pattern.findall(line)
+                for match in matches:
+                    if isinstance(match, tuple):
+                        match = match[0] if match else ""
+                    
+                    # Clean and validate the file path
+                    clean_path = match.strip()
+                    if clean_path and clean_path.endswith('.c'):
+                        # Apply path replacements
+                        clean_path = self._replace_multiple_substrings(clean_path, self.PATH_REPLACEMENTS)
+                        source_files.add(clean_path)
+        
+        if self.verbose and source_files:
+            print(f"Extracted {len(source_files)} source files from patch")
             
-        Returns:
-            Set of source file paths
-        """
-        sourcefiles = set()
-        
-        # Use precompiled pattern for better performance
-        diff_pattern = self._patch_patterns[0]  # diff --git pattern
-        
-        for match in diff_pattern.finditer(patch_info):
-            source_file = match.group(1)
-            sourcefiles.add(source_file)
-            if self.verbose:
-                print(f"Found source file: {source_file}")
-        
-        return sourcefiles
+        return source_files
 
+    @timed_method
     def extract_config_options_from_makefile(self, makefile_path: str, source_file_name: str) -> Set[str]:
-        """Extract configuration options from Makefile for a given source file.
+        """Extract configuration options from Makefile using recursive analysis."""
+        processed_files = set()
+        return self._extract_config_recursive_optimized(makefile_path, source_file_name, processed_files)
+
+    def _extract_config_recursive_optimized(self, makefile_path: str, source_file_name: str, processed_files: Set[str]) -> Set[str]:
+        """Optimized recursive configuration extraction with caching."""
+        # Prevent infinite recursion
+        if makefile_path in processed_files or len(processed_files) > self.MAX_INCLUDE_FILES_PER_MAKEFILE:
+            return set()
         
-        This enhanced version handles:
-        - Standard obj-$(CONFIG_*) patterns
-        - Multi-line assignments with backslash continuation
-        - Variable references and expansions
-        - Different object file patterns (obj-y, obj-m, obj-n)
-        - Composite object files
-        - Subdirectory inclusions
-        - Include statements and recursive file processing
-        - Performance optimizations with caching
+        processed_files.add(makefile_path)
         
-        Args:
-            makefile_path: Path to Makefile
-            source_file_name: Name of source file to find config for
-            
-        Returns:
-            Set of configuration options
-        """
         # Check cache first
         cache_key = f"{makefile_path}:{source_file_name}"
         if cache_key in self._config_cache:
+            self._cache_hits['config'] += 1
             return self._config_cache[cache_key]
         
-        config_options = set()
-        processed_files = set()  # Prevent infinite recursion
-        
-        result = self._extract_config_recursive_optimized(makefile_path, source_file_name, processed_files)
-        
-        # Cache the result
-        self._config_cache[cache_key] = result
-        
-        # Limit cache size to prevent memory issues
-        if len(self._config_cache) > self.CONFIG_CACHE_SIZE:
-            # Remove oldest entries (simple FIFO for now)
-            oldest_keys = list(self._config_cache.keys())[:50]
-            for key in oldest_keys:
-                del self._config_cache[key]
-        
-        return result
-
-    def _extract_config_recursive_optimized(self, makefile_path: str, source_file_name: str, processed_files: Set[str]) -> Set[str]:
-        """Ultra-optimized recursive extraction of configuration options from Makefile and included files.
-        
-        Args:
-            makefile_path: Path to Makefile
-            source_file_name: Name of source file to find config for
-            processed_files: Set of already processed files to prevent recursion
-            
-        Returns:
-            Set of configuration options
-        """
+        self._cache_misses['config'] += 1
         config_options = set()
         
-        # Prevent infinite recursion with depth and count limits
-        abs_makefile_path = os.path.abspath(makefile_path)
-        if (abs_makefile_path in processed_files or 
-            len(processed_files) > self.MAX_KCONFIG_RECURSION_DEPTH):
-            return config_options
-        processed_files.add(abs_makefile_path)
-        
-        # Use cached file content
-        content = self._get_cached_file_content(makefile_path)
-        if not content:
-            return config_options
-        
-        # Use cached Makefile variables
-        makefile_vars = self._get_cached_makefile_vars(makefile_path)
-        
-        # Ultra-fast config extraction
-        config_options.update(self._extract_configs_ultra_fast(content, source_file_name, makefile_vars))
-        
-        # Process includes with strict limits for performance
-        if len(processed_files) < self.MAX_KCONFIG_RECURSION_DEPTH // 2:
-            include_pattern = re.compile(r'^-?include\s+(.+)$', re.MULTILINE)
-            include_matches = include_pattern.findall(content)
+        try:
+            makefile_vars = self._get_cached_makefile_vars(makefile_path)
+            content = self._get_cached_file_content(makefile_path)
             
-            for include_match in include_matches[:self.MAX_INCLUDE_FILES_PER_MAKEFILE]:
-                include_pattern_str = include_match.strip()
-                included_files = self._resolve_include_pattern(include_pattern_str, makefile_path, makefile_vars)
+            for line in content.split('\n'):
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
                 
-                for included_file in included_files[:3]:  # Limit to 3 includes per pattern
-                    if os.path.exists(included_file) and included_file not in processed_files:
-                        if self.verbose:
-                            print(f"Processing included file: {included_file}")
-                        included_configs = self._extract_config_recursive_optimized(
-                            included_file, source_file_name, processed_files
-                        )
-                        config_options.update(included_configs)
+                # Extract configs from this line
+                line_configs = self._extract_configs_from_line(line, source_file_name, makefile_path, makefile_vars)
+                config_options.update(line_configs)
+                
+                # Handle includes
+                if line.startswith('include') or 'include' in line:
+                    include_patterns = self._resolve_include_pattern(line, makefile_path, makefile_vars)
+                    for include_path in include_patterns[:self.MAX_INCLUDE_FILES_PER_MAKEFILE]:
+                        if os.path.exists(include_path) and include_path not in processed_files:
+                            included_configs = self._extract_config_recursive_optimized(
+                                include_path, source_file_name, processed_files.copy()
+                            )
+                            config_options.update(included_configs)
+            
+            # Cache the result
+            self._config_cache[cache_key] = config_options
+            
+        except Exception as e:
+            if self.verbose:
+                print(f"Error processing makefile {makefile_path}: {e}")
         
         return config_options
 
     def _resolve_include_pattern(self, include_pattern: str, makefile_path: str, makefile_vars: dict) -> List[str]:
-        """Resolve include patterns to actual file paths.
+        """Resolve include patterns to actual file paths."""
+        resolved_paths = []
         
-        Args:
-            include_pattern: Include pattern from Makefile
-            makefile_path: Path to current Makefile
-            makefile_vars: Dictionary of Makefile variables
-            
-        Returns:
-            List of resolved file paths
-        """
-        include_files = []
+        # Extract include path from line
+        include_match = re.search(r'include\s+(.+)', include_pattern)
+        if not include_match:
+            return resolved_paths
         
-        try:
-            # Expand variables in the include pattern
-            expanded_pattern = self._expand_makefile_variables(include_pattern, makefile_vars)
-            
-            # Handle relative paths
-            if not os.path.isabs(expanded_pattern):
-                base_dir = os.path.dirname(makefile_path)
-                expanded_pattern = os.path.join(base_dir, expanded_pattern)
-            
-            # Handle wildcards
-            if '*' in expanded_pattern or '?' in expanded_pattern:
-                import glob
-                matching_files = glob.glob(expanded_pattern)
-                include_files.extend(matching_files)
-            else:
-                include_files.append(expanded_pattern)
-                
-        except Exception as e:
-            if self.verbose:
-                print(f"Error resolving include pattern '{include_pattern}': {e}")
+        include_path = include_match.group(1).strip()
         
-        return include_files
+        # Expand variables
+        expanded_path = self._expand_makefile_variables(include_path, makefile_vars)
+        
+        # Handle relative paths
+        makefile_dir = os.path.dirname(makefile_path)
+        
+        if not os.path.isabs(expanded_path):
+            full_path = os.path.join(makefile_dir, expanded_path)
+        else:
+            full_path = expanded_path
+        
+        # Handle wildcards
+        if '*' in expanded_path or '?' in expanded_path:
+            try:
+                glob_matches = glob.glob(full_path)
+                resolved_paths.extend(glob_matches[:self.MAX_INCLUDE_FILES_PER_MAKEFILE])
+            except Exception:
+                pass
+        else:
+            if os.path.exists(full_path):
+                resolved_paths.append(full_path)
+        
+        return resolved_paths
 
     def _extract_configs_from_line(self, line: str, source_file_name: str, makefile_path: str, makefile_vars: dict) -> Set[str]:
-        """Extract configuration options from a single Makefile line.
-        
-        Args:
-            line: Line from Makefile
-            source_file_name: Name of source file to find config for
-            makefile_path: Path to Makefile (for directory-based matching)
-            makefile_vars: Dictionary of Makefile variables for expansion
-            
-        Returns:
-            Set of configuration options found in this line
-        """
+        """Extract configuration options from a single Makefile line."""
         config_options = set()
-        base_name = os.path.splitext(source_file_name)[0]
-        dir_name = os.path.basename(os.path.dirname(makefile_path))
         
-        # Expand variables once
+        # Expand variables in the line
         expanded_line = self._expand_makefile_variables(line, makefile_vars)
         
-        # Quick check: if line doesn't contain CONFIG_, skip expensive processing
-        if 'CONFIG_' not in expanded_line:
+        # Check if line references our source file
+        has_source_ref = source_file_name in expanded_line or source_file_name.replace('.c', '.o') in expanded_line
+        
+        # Skip lines that don't reference our file and aren't conditional
+        if not has_source_ref and not any(keyword in expanded_line.lower() for keyword in ['ifdef', 'ifeq', 'ifneq']):
             return config_options
         
-        # Quick check: if line doesn't contain source file references, skip most patterns
-        has_source_ref = (base_name in expanded_line or 
-                         source_file_name in expanded_line or 
-                         dir_name in expanded_line)
+        # Use all advanced patterns
+        for pattern_group in self._advanced_config_patterns.values():
+            for pattern in pattern_group:
+                matches = pattern.findall(expanded_line)
+                for match in matches:
+                    if isinstance(match, tuple):
+                        config_option = match[0] if match else ""
+                    else:
+                        config_option = match
+                    
+                    if config_option and config_option.startswith('CONFIG_'):
+                        config_options.add(config_option)
         
-        if not has_source_ref and not any(keyword in expanded_line.lower() for keyword in ['ifdef', 'ifeq', 'ifneq']):
-            # Only extract standalone CONFIG references
-            config_matches = re.findall(r'CONFIG_[A-Z0-9_]+', expanded_line)
-            return set(config_matches)
-        
-        # Use precompiled patterns for better performance
-        target_files = [base_name, source_file_name, dir_name]
-        
-        for target in target_files:
-            if target in expanded_line:
-                # Apply efficient pattern matching
-                for pattern_template in [
-                    r'obj-\$\((CONFIG_[A-Z0-9_]+)\)\s*[+:]?=\s*.*\b{}\b',
-                    r'{}-\$\((CONFIG_[A-Z0-9_]+)\)',
-                    r'{}-objs-\$\((CONFIG_[A-Z0-9_]+)\)',
-                ]:
-                    pattern = pattern_template.format(re.escape(target))
-                    matches = re.finditer(pattern, expanded_line, re.IGNORECASE)
-                    for match in matches:
-                        for group_idx in range(1, match.lastindex + 1 if match.lastindex else 1):
-                            group_val = match.group(group_idx)
-                            if group_val and group_val.startswith('CONFIG_'):
-                                config_options.add(group_val)
-        
-        # Quick conditional pattern matching
+        # Special handling for conditional compilation
         if any(keyword in expanded_line for keyword in ['ifdef', 'ifeq', 'ifneq']):
-            conditional_configs = re.findall(r'CONFIG_[A-Z0-9_]+', expanded_line)
-            if has_source_ref:
-                config_options.update(conditional_configs)
+            # Extract configs from conditional statements
+            config_matches = re.findall(r'CONFIG_[A-Z0-9_]+', expanded_line)
+            config_options.update(config_matches)
         
         return config_options
 
@@ -1377,416 +1212,987 @@ class VexKernelChecker:
         """Expand Makefile variables in a line.
         
         Args:
-            line: Line containing potential variable references
+            line: The line to expand
             makefile_vars: Dictionary of variable definitions
-            
-        Returns:
-            Line with variables expanded
         """
-        # Simple variable expansion for $(VAR) and ${VAR} patterns
+        expanded = line
+        
+        # Handle $(VAR) and ${VAR} syntax
         def replace_var(match):
             var_name = match.group(1)
             return makefile_vars.get(var_name, match.group(0))
         
-        # Expand $(VAR) style variables
-        expanded = re.sub(r'\$\(([A-Z_][A-Z0-9_]*)\)', replace_var, line)
-        # Expand ${VAR} style variables  
-        expanded = re.sub(r'\$\{([A-Z_][A-Z0-9_]*)\}', replace_var, expanded)
+        expanded = re.sub(r'\$\(([^)]+)\)', replace_var, expanded)
+        expanded = re.sub(r'\$\{([^}]+)\}', replace_var, expanded)
         
         return expanded
 
+    @timed_method
     def _find_kconfig_dependencies(self, config_option: str, kernel_source_path: str) -> Set[str]:
-        """Find additional config dependencies from Kconfig files.
-        
-        This method looks for 'depends on' relationships in Kconfig files
-        to find transitive dependencies.
-        
-        Args:
-            config_option: Configuration option to find dependencies for
-            kernel_source_path: Root path of kernel sources
-            
-        Returns:
-            Set of additional configuration options this depends on
-        """
+        """Find Kconfig dependencies for a configuration option."""
         dependencies = set()
         
-        try:
-            # Look for Kconfig files in the kernel source
-            for root, dirs, files in os.walk(kernel_source_path):
-                for file in files:
-                    if file in ['Kconfig', 'Kconfig.debug', 'Kconfig.platform'] or file.startswith('Kconfig.'):
-                        kconfig_path = os.path.join(root, file)
-                        dependencies.update(self._parse_kconfig_file(kconfig_path, config_option))
-                        
-        except Exception as e:
-            if self.verbose:
-                print(f"Error searching Kconfig files: {e}")
+        # Cache check
+        cache_key = f"{config_option}:{kernel_source_path}"
+        if cache_key in self._kconfig_cache:
+            self._cache_hits['config'] += 1
+            return self._kconfig_cache[cache_key]
         
+        self._cache_misses['config'] += 1
+        
+        # Look for Kconfig files
+        kconfig_patterns = [
+            'Kconfig*',
+            '*/Kconfig*',
+            '**/Kconfig*'
+        ]
+        
+        kconfig_files = []
+        for pattern in kconfig_patterns:
+            try:
+                matches = glob.glob(os.path.join(kernel_source_path, pattern), recursive=True)
+                kconfig_files.extend(matches[:50])  # Limit to prevent excessive processing
+            except Exception:
+                continue
+        
+        # Parse Kconfig files
+        for kconfig_file in kconfig_files[:20]:  # Process only first 20 files
+            try:
+                file_deps = self._parse_kconfig_file(kconfig_file, config_option)
+                dependencies.update(file_deps)
+            except Exception as e:
+                if self.verbose:
+                    print(f"Error parsing Kconfig file {kconfig_file}: {e}")
+        
+        # Cache result
+        self._kconfig_cache[cache_key] = dependencies
         return dependencies
 
     def _parse_kconfig_file(self, kconfig_path: str, target_config: str) -> Set[str]:
-        """Parse a single Kconfig file for dependencies.
-        
-        Args:
-            kconfig_path: Path to Kconfig file
-            target_config: Configuration option to find dependencies for
-            
-        Returns:
-            Set of configuration options this depends on
-        """
+        """Parse a Kconfig file to find dependencies."""
         dependencies = set()
         
         try:
-            with open(kconfig_path, 'r', encoding='utf-8', errors='ignore') as file:
-                content = file.read()
+            content = self._get_cached_file_content(kconfig_path)
+            lines = content.split('\n')
             
-            # Look for the target config definition
-            config_pattern = rf'config\s+{target_config.replace("CONFIG_", "")}\s*\n(.*?)(?=config\s+|\Z)'
-            match = re.search(config_pattern, content, re.DOTALL | re.IGNORECASE)
+            current_config = None
+            in_target_config = False
             
-            if match:
-                config_block = match.group(1)
+            for line in lines:
+                line = line.strip()
                 
-                # Find 'depends on' lines
-                depends_matches = re.finditer(r'depends\s+on\s+(.+)', config_block, re.IGNORECASE)
-                for depends_match in depends_matches:
-                    depends_line = depends_match.group(1).strip()
-                    
-                    # Extract config options from the depends line
-                    config_refs = re.findall(r'\b[A-Z_][A-Z0-9_]*\b', depends_line)
-                    for config_ref in config_refs:
-                        if config_ref not in ['AND', 'OR', 'NOT', 'IF']:
-                            dependencies.add(f'CONFIG_{config_ref}')
+                # Look for the target config definition
+                if line.startswith('config '):
+                    current_config = line.split()[1] if len(line.split()) > 1 else None
+                    in_target_config = (current_config == target_config.replace('CONFIG_', ''))
                 
-                if self.verbose and dependencies:
-                    print(f"Found Kconfig dependencies for {target_config}: {', '.join(dependencies)}")
-                    
-        except Exception as e:
-            if self.verbose:
-                print(f"Error parsing Kconfig file {kconfig_path}: {e}")
+                # Extract dependencies if we're in the target config
+                if in_target_config:
+                    if line.startswith('depends on ') or line.startswith('select '):
+                        dep_line = line.replace('depends on ', '').replace('select ', '')
+                        # Extract CONFIG_ options from dependency line
+                        config_matches = re.findall(r'\b[A-Z0-9_]+\b', dep_line)
+                        for match in config_matches:
+                            if not match.startswith('CONFIG_'):
+                                dependencies.add(f'CONFIG_{match}')
+                            else:
+                                dependencies.add(match)
+                
+                # Reset when we hit another config
+                if line.startswith('config ') and not in_target_config:
+                    current_config = None
+        
+        except Exception:
+            pass
         
         return dependencies
 
+    @timed_method
     def find_makefile_config_options(self, source_file_path: str, makefile_path: str, kernel_source_path: str) -> Set[str]:
-        """Find configuration options for a source file by analyzing Makefile.
+        """Find configuration options for a source file from a specific Makefile."""
+        # Extract just the filename
+        source_file_name = os.path.basename(source_file_path)
         
-        This enhanced version also looks for Kconfig dependencies to provide
-        a more complete picture of configuration requirements.
+        # Get configs from this Makefile
+        config_options = self.extract_config_options_from_makefile(makefile_path, source_file_name)
         
-        Args:
-            source_file_path: Path to source file
-            makefile_path: Path to Makefile
-            kernel_source_path: Root path of kernel sources
-            
-        Returns:
-            Set of configuration options
-        """
-        if self.verbose:
-            print(f"Analyzing Makefile {makefile_path} for {source_file_path}")
+        # Add Kconfig dependencies
+        all_configs = set(config_options)
+        for config in list(config_options):
+            dependencies = self._find_kconfig_dependencies(config, kernel_source_path)
+            all_configs.update(dependencies)
+        filtered_configs = self._filter_relevant_config_options(all_configs)
+        if self.verbose and filtered_configs:
+            print(f"Found {len(filtered_configs)} config options for {source_file_name}")
         
-        # Primary analysis: direct Makefile parsing
-        config_options = self.extract_config_options_from_makefile(makefile_path, os.path.basename(source_file_path))
-        if config_options:
-            if self.verbose:
-                print(f"Found direct config options: {', '.join(config_options)}")
-        else:
-            # Try with parent directory context
-            parent_dir = os.path.dirname(source_file_path)
-            config_options = self.extract_config_options_from_makefile(
-                makefile_path, f"{os.path.basename(parent_dir)}/{os.path.basename(source_file_path)}"
-            )
-            
-            if not config_options:
-                # Check parent directories for matches
-                while parent_dir != "" and parent_dir != kernel_source_path:
-                    config_options = self.extract_config_options_from_makefile(makefile_path, os.path.basename(parent_dir))
-                    if config_options:
-                        if self.verbose:
-                            print(f"Found config options via parent directory {os.path.basename(parent_dir)}: {', '.join(config_options)}")
-                        break
-                    parent_dir = os.path.dirname(parent_dir)
-        
-        # Secondary analysis: find Kconfig dependencies
-        all_config_options = set(config_options)
-        for config_option in config_options:
-            try:
-                dependencies = self._find_kconfig_dependencies(config_option, kernel_source_path)
-                all_config_options.update(dependencies)
-                if dependencies and self.verbose:
-                    print(f"Found Kconfig dependencies for {config_option}: {', '.join(dependencies)}")
-            except Exception as e:
-                if self.verbose:
-                    print(f"Error finding Kconfig dependencies for {config_option}: {e}")
-        
-        return all_config_options
+        return filtered_configs
 
+    @timed_method
     def find_makefiles_config_options(self, source_file_path: str, kernel_source_path: str) -> Set[str]:
-        """Ultra-fast configuration options discovery using smart search ordering.
-        
-        This optimized version uses:
-        - Priority-based directory searching
-        - Aggressive caching at multiple levels
-        - Fast makefile discovery
-        - Optimized pattern matching
-        
-        Args:
-            source_file_path: Path to source file
-            kernel_source_path: Root path of kernel sources
-            
-        Returns:
-            Set of configuration options
-        """
-        if self.verbose:
-            print(f"Ultra-fast config search for: {source_file_path}")
-        
-        all_config_options = set()
-        
-        # Use fast makefile discovery
-        makefiles = self._find_makefiles_fast(kernel_source_path, source_file_path)
-        
-        if self.verbose:
-            print(f"Found {len(makefiles)} makefiles to analyze")
-        
-        # Analyze each makefile with fast extraction
-        for makefile_path in makefiles:
-            if self.verbose:
-                print(f"Analyzing {makefile_path}")
-            
-            config_options = self.find_makefile_config_options(source_file_path, makefile_path, kernel_source_path)
-            if config_options:
-                all_config_options.update(config_options)
-                if self.verbose:
-                    print(f"Found config options in {makefile_path}: {', '.join(config_options)}")
-        
-        # If no options found in Makefiles, try source file analysis
-        if not all_config_options:
-            if self.verbose:
-                print("No Makefile configs found, analyzing source file directly")
-            source_configs = self._analyze_source_file_ultra_fast(source_file_path)
-            all_config_options.update(source_configs)
-        
-        # If still no options, try path-based inference
-        if not all_config_options:
-            if self.verbose:
-                print("No direct configs found, trying path-based inference")
-            path_configs = self._infer_config_from_path(source_file_path, kernel_source_path)
-            all_config_options.update(path_configs)
-        
-        return all_config_options
-
-    def _analyze_related_makefiles(self, search_dir: str, source_file_path: str, kernel_source_path: str, config_options: Set[str]):
-        """Analyze related Makefiles that might contain relevant configuration.
-        
-        Args:
-            search_dir: Directory to search in
-            source_file_path: Path to source file
-            kernel_source_path: Root path of kernel sources
-            config_options: Set to add found config options to
-        """
-        source_basename = os.path.splitext(os.path.basename(source_file_path))[0]
-        
-        # Look for makefiles with names related to the source file or directory
-        related_patterns = [
-            f"Makefile.{source_basename}",
-            f"{source_basename}.mk",
-            f"Makefile.{os.path.basename(search_dir)}",
-            f"{os.path.basename(search_dir)}.mk"
-        ]
-        
-        for pattern in related_patterns:
-            related_makefile = os.path.join(search_dir, pattern)
-            if os.path.exists(related_makefile):
-                if self.verbose:
-                    print(f"Analyzing related makefile: {related_makefile}")
-                found_options = self.find_makefile_config_options(source_file_path, related_makefile, kernel_source_path)
-                config_options.update(found_options)
-
-    def _advanced_config_search(self, source_file_path: str, kernel_source_path: str) -> Set[str]:
-        """Perform advanced configuration option search using various heuristics.
-        
-        Args:
-            source_file_path: Path to source file
-            kernel_source_path: Root path of kernel sources
-            
-        Returns:
-            Set of configuration options found through advanced methods
-        """
+        """Find all relevant Makefiles and extract configuration options."""
         config_options = set()
         
-        try:
-            # Strategy 1: Search for the source filename in all Makefiles
-            if self.verbose:
-                print("Performing advanced search: scanning all Makefiles for source file references")
-            
-            config_options.update(self._search_all_makefiles(source_file_path, kernel_source_path))
-            
-            # Strategy 2: Analyze source file content for config hints
-            if self.verbose:
-                print("Performing advanced search: analyzing source file for config hints")
-            
-            config_options.update(self._analyze_source_file_config_hints(source_file_path))
-            
-            # Strategy 3: Use directory naming conventions
-            if self.verbose:
-                print("Performing advanced search: using directory naming conventions")
-            
-            config_options.update(self._infer_config_from_path(source_file_path, kernel_source_path))
-            
-        except Exception as e:
-            if self.verbose:
-                print(f"Error in advanced config search: {e}")
+        # Cache check
+        cache_key = f"makefiles:{source_file_path}:{kernel_source_path}"
+        if cache_key in self._config_cache:
+            self._cache_hits['config'] += 1
+            return self._config_cache[cache_key]
+        
+        self._cache_misses['config'] += 1
+        
+        # Use optimized makefile finding
+        makefiles = self._find_makefiles_fast(kernel_source_path, source_file_path)
+        
+        # Process makefiles in priority order
+        for makefile_path in makefiles[:self.MAX_MAKEFILE_SEARCH_FILES]:
+            try:
+                makefile_configs = self.find_makefile_config_options(
+                    source_file_path, makefile_path, kernel_source_path
+                )
+                config_options.update(makefile_configs)
+            except Exception as e:
+                if self.verbose:
+                    print(f"Error processing makefile {makefile_path}: {e}")
+        
+        # Add advanced source-based analysis
+        advanced_configs = self._advanced_config_search(source_file_path, kernel_source_path)
+        config_options.update(advanced_configs)
+        
+        # Cache result
+        self._config_cache[cache_key] = config_options
+        
+        if self.verbose:
+            print(f"Total {len(config_options)} config options found for {source_file_path}")
         
         return config_options
 
-    def _search_all_makefiles(self, source_file_path: str, kernel_source_path: str) -> Set[str]:
-        """Ultra-optimized search of all Makefiles in kernel source for references to the source file.
+    def _analyze_related_makefiles(self, search_dir: str, source_file_path: str, kernel_source_path: str, config_options: Set[str]):
+        """Analyze related Makefiles in the same directory tree."""
+        try:
+            for root, dirs, files in os.walk(search_dir):
+                # Limit depth to prevent excessive searching
+                depth = root.replace(search_dir, '').count(os.sep)
+                if depth > 3:
+                    dirs.clear()
+                    continue
+                
+                for filename in files:
+                    if filename in ['Makefile', 'Kbuild', 'Makefile.am']:
+                        makefile_path = os.path.join(root, filename)
+                        try:
+                            makefile_configs = self.find_makefile_config_options(
+                                source_file_path, makefile_path, kernel_source_path
+                            )
+                            config_options.update(makefile_configs)
+                        except Exception:
+                            continue
+        except Exception as e:
+            if self.verbose:
+                print(f"Error analyzing related makefiles in {search_dir}: {e}")
+
+    def _find_makefiles_fast(self, kernel_source_path: str, source_file_path: str) -> List[str]:
+        """Fast Makefile discovery with intelligent prioritization."""
+        makefiles = []
         
-        Args:
-            source_file_path: Path to source file
-            kernel_source_path: Root path of kernel sources
-            
-        Returns:
-            Set of configuration options found
-        """
-        config_options = set()
-        source_basename = os.path.basename(source_file_path)
-        source_name = os.path.splitext(source_basename)[0]
+        # Cache check
+        cache_key = f"makefiles_fast:{kernel_source_path}:{source_file_path}"
+        if cache_key in self._makefile_location_cache:
+            self._cache_hits['makefile'] += 1
+            return self._makefile_location_cache[cache_key]
         
-        # Use Path for better performance
-        kernel_path = Path(kernel_source_path)
-        
-        # Highly optimized search with smart prioritization
-        files_searched = 0
+        self._cache_misses['makefile'] += 1
         
         try:
-            # Build priority-ordered search candidates
-            search_candidates = []
+            # Start from source file directory and work up
+            rel_path = os.path.relpath(source_file_path, kernel_source_path)
+            search_dirs = []
             
-            # Priority 1: Directories related to source file path
-            source_dir_parts = Path(source_file_path).parts
-            for i, part in enumerate(source_dir_parts):
-                if part in ['drivers', 'fs', 'net', 'sound', 'crypto', 'security']:
-                    potential_dirs = list(kernel_path.glob(f"**/{part}/**/Makefile"))[:20]
-                    for makefile_path in potential_dirs:
-                        priority = 1000 - i * 100  # Higher priority for closer matches
-                        search_candidates.append((makefile_path, priority))
+            # Add directories in priority order
+            path_parts = rel_path.split(os.sep)
+            for i in range(len(path_parts)):
+                partial_path = os.path.join(kernel_source_path, *path_parts[:i+1])
+                if os.path.isdir(partial_path):
+                    search_dirs.append(partial_path)
+                elif os.path.isfile(partial_path):
+                    # Add parent directory of the file
+                    search_dirs.append(os.path.dirname(partial_path))
             
-            # Priority 2: Source and parent directories
-            source_dir = os.path.dirname(source_file_path)
-            for potential_makefile in ['Makefile', 'Kbuild']:
-                makefile_path = Path(source_dir) / potential_makefile
-                if makefile_path.exists():
-                    search_candidates.append((makefile_path, 2000))
+            # Add root kernel source directory
+            if kernel_source_path not in search_dirs:
+                search_dirs.append(kernel_source_path)
             
-            # Priority 3: Common kernel subsystem makefiles
-            priority_patterns = [
-                ('drivers/*/Makefile', 800),
-                ('fs/*/Makefile', 700),
-                ('net/*/Makefile', 600),
-                ('sound/*/Makefile', 500),
-                ('crypto/Makefile', 400),
-                ('security/*/Makefile', 400),
-            ]
+            # Find Makefiles with priority scoring
+            makefile_candidates = []
             
-            for pattern, priority in priority_patterns:
-                makefiles = list(kernel_path.glob(pattern))[:10]  # Limit per pattern
-                for makefile_path in makefiles:
-                    search_candidates.append((makefile_path, priority))
-            
-            # Sort by priority (highest first) and limit total candidates
-            search_candidates.sort(key=lambda x: x[1], reverse=True)
-            search_candidates = search_candidates[:self.MAX_MAKEFILE_SEARCH_FILES]
-            
-            # Process in priority order
-            for makefile_path, priority in search_candidates:
-                if files_searched >= self.MAX_MAKEFILE_SEARCH_FILES:
-                    break
-                
+            for search_dir in search_dirs[:10]:  # Limit search depth
                 try:
-                    # Use cached content for ultra-fast processing
-                    content = self._get_cached_file_content(str(makefile_path))
-                    if content and (source_basename in content or source_name in content):
-                        found_options = self.extract_config_options_from_makefile(str(makefile_path), source_basename)
-                        config_options.update(found_options)
-                        if found_options and self.verbose:
-                            print(f"Priority search found configs in {makefile_path}: {', '.join(found_options)}")
+                    for filename in ['Makefile', 'Kbuild', 'Makefile.am']:
+                        makefile_path = os.path.join(search_dir, filename)
+                        if os.path.exists(makefile_path):
+                            priority = self._get_directory_priority(search_dir, source_file_path)
+                            makefile_candidates.append((makefile_path, priority))
                 except Exception:
-                    pass  # Skip files that can't be read
-                
-                files_searched += 1
+                    continue
             
-            if self.verbose and files_searched >= self.MAX_MAKEFILE_SEARCH_FILES:
-                print(f"Limited priority Makefile search to {files_searched} files for optimal performance")
+            # Sort by priority (lower number = higher priority)
+            makefile_candidates.sort(key=lambda x: x[1])
+            makefiles = [path for path, _ in makefile_candidates]
+            
+            # Cache result
+            self._makefile_location_cache[cache_key] = makefiles
+            
+        except Exception as e:
+            if self.verbose:
+                print(f"Error in fast makefile discovery: {e}")
+        
+        return makefiles
+
+    def _get_directory_priority(self, directory_path: str, source_file_path: str) -> int:
+        """Calculate priority score for a directory (lower = higher priority)."""
+        # Check cache
+        cache_key = f"{directory_path}:{source_file_path}"
+        if cache_key in self._directory_priority_cache:
+            return self._directory_priority_cache[cache_key]
+        
+        priority = 100  # Default priority
+        
+        try:
+            # Higher priority for directories closer to source file
+            rel_dir = os.path.relpath(directory_path, os.path.dirname(source_file_path))
+            depth = rel_dir.count(os.sep)
+            priority += depth * 10
+            
+            # Boost priority for certain directory patterns
+            dir_name = os.path.basename(directory_path).lower()
+            
+            if dir_name in ['drivers', 'net', 'fs', 'sound', 'crypto']:
+                priority -= 20  # Higher priority
+            elif dir_name in ['arch', 'kernel', 'mm']:
+                priority -= 10
+            elif dir_name.startswith('test') or 'debug' in dir_name:
+                priority += 50  # Lower priority
+            
+            # Boost if directory is in source file path
+            if directory_path in source_file_path:
+                priority -= 30
+                
+        except Exception:
+            priority = 200  # Default priority
+        
+        # Cache the result
+        self._directory_priority_cache[cache_key] = priority
+        return priority
+
+    @timed_method
+    def check_kernel_config(self, cve: Dict, kernel_config: List[str], kernel_source_path: str) -> Optional[VulnerabilityAnalysis]:
+        """
+        Main method to check if a CVE affects the given kernel configuration.
+        
+        This method:
+        1. Extracts or fetches CVE details
+        2. Determines if the CVE is kernel-related
+        3. Fetches patch information if available
+        4. Analyzes configuration requirements
+        5. Returns vulnerability analysis result
+        """
+        try:
+            cve_id = cve.get('id', '')
+            if not cve_id:
+                if self.verbose:
+                    print("Missing CVE ID - skipping analysis")
+                return None  # Don't register analysis outcomes for missing CVE IDs
+            
+            if self.verbose:
+                print(f"\n--- Analyzing {cve_id} ---")
+            
+            # Skip if already processed (for batch operations)
+            if cve_id in self._processed_cves:
+                if self.verbose:
+                    print(f"Skipping {cve_id} - already processed")
+                return None  # Don't register duplicate analysis outcomes
+            
+            self._processed_cves.add(cve_id)
+            
+            # Get CVE details
+            cve_info = None
+            # Always fetch from NVD API for authoritative CVE data and patch URLs
+            # VEX files should contain CVE IDs only, patch URLs come from NVD
+            if self.check_patches:
+                if self.verbose:
+                    print(f"🔍 Step 1/4: Fetching CVE details from NVD API...")
+                cve_info = self.fetch_cve_details(cve_id)
+                
+                if not cve_info:
+                    if self.verbose:
+                        print(f"Could not fetch CVE details for {cve_id} - skipping analysis")
+                    return None  # Don't register analysis outcomes for fetch failures
+            
+            # Check if kernel-related (unless analyzing all CVEs)
+            if not self.analyze_all_cves and cve_info:
+                if self.verbose:
+                    print(f"🔍 Step 2/4: Checking if CVE is kernel-related...")
+                if not self.is_kernel_related_cve(cve_info):
+                    if self.verbose:
+                        print(f"CVE {cve_id} is not kernel-related - skipping analysis")
+                    return None  # Don't register non-kernel CVEs as analysis outcomes
+            
+            # Try to get patch URL and analyze
+            if self.check_patches and cve_info:
+                if self.verbose:
+                    print(f"🔍 Step 3/4: Extracting and fetching patch content...")
+                patch_url = self.extract_patch_url(cve_info)
+                
+                if patch_url:
+                    if self.verbose:
+                        print(f"Found patch URL: {patch_url}")
+                    
+                    # Fetch patch content
+                    patch_info = self.fetch_patch_content_with_github_priority(patch_url)
+                    
+                    if patch_info:
+                        if self.verbose:
+                            print(f"🔍 Step 4/4: Analyzing configuration requirements...")
+                        # Extract source files from patch
+                        source_files = self.extract_sourcefiles(patch_info)
+                        
+                        if source_files:
+                            if self.verbose:
+                                print(f"Analyzing {len(source_files)} source files from patch")
+                            
+                            all_config_options = set()
+                            
+                            # Analyze each source file
+                            source_file_list = list(source_files)[:20]  # Limit to 20 files
+                            
+                            for i, source_file in enumerate(source_file_list):
+                                try:
+                                    if self.verbose and len(source_file_list) > 1:
+                                        print(f"   📁 Analyzing file {i+1}/{len(source_file_list)}: {source_file}")
+                                    
+                                    # Try to find the file in kernel source
+                                    full_source_path = os.path.join(kernel_source_path, source_file)
+                                    
+                                    if os.path.exists(full_source_path):
+                                        file_configs = self.find_makefiles_config_options(
+                                            full_source_path, kernel_source_path
+                                        )
+                                        all_config_options.update(file_configs)
+                                        
+                                        if self.verbose and file_configs:
+                                            print(f"      ✅ Found {len(file_configs)} config options")
+                                    else:
+                                        if self.verbose:
+                                            print(f"      ⚠️  Source file not found: {source_file}")
+                                            
+                                except Exception as e:
+                                    if self.verbose:
+                                        print(f"      ❌ Error analyzing {source_file}: {e}")
+                                    continue
+                            
+                            # Also extract configs directly from patch
+                            patch_configs = set()
+                            for pattern in self._config_patterns:
+                                matches = pattern.findall(patch_info)
+                                for match in matches:
+                                    if isinstance(match, tuple):
+                                        config_option = match[0] if match else ""
+                                    else:
+                                        config_option = match
+                                    
+                                    if config_option and config_option.startswith('CONFIG_'):
+                                        patch_configs.add(config_option)
+                            
+                            all_config_options.update(patch_configs)
+                            
+                            if all_config_options:
+                                return self.in_kernel_config(all_config_options, kernel_config)
+                            else:
+                                if self.verbose:
+                                    print("No configuration options found in patch analysis")
+                        else:
+                            if self.verbose:
+                                print("No source files found in patch")
+                    else:
+                        if self.verbose:
+                            print("Could not fetch patch content")
+                else:
+                    if self.verbose:
+                        print("No patch URL found")
+            
+            # Fallback analysis
+            return VulnerabilityAnalysis(
+                state=VulnerabilityState.UNDER_INVESTIGATION,
+                justification=Justification.COMPONENT_NOT_PRESENT,
+                response=Response.CAN_NOT_FIX,
+                detail="Unable to determine configuration requirements",
+                timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            )
+            
+        except Exception as e:
+            if self.verbose:
+                print(f"Error analyzing {cve.get('id', 'unknown')}: {e}")
+                traceback.print_exc()
+            
+            # Don't register analysis outcomes for errors - return None
+            return None
+
+    @timed_method
+    def _process_cve_parallel(self, cve: Dict, kernel_config: List[str], kernel_source_path: str) -> Tuple[str, Optional[VulnerabilityAnalysis]]:
+        """Process a single CVE for parallel execution."""
+        try:
+            check_interrupt()  # Check for interrupt at start of CVE processing
+            cve_id = cve.get('id', '')
+            analysis = self.check_kernel_config(cve, kernel_config, kernel_source_path)
+            return cve_id, analysis
+        except KeyboardInterrupt:
+            # Re-raise keyboard interrupts to allow graceful shutdown
+            raise
+        except Exception as e:
+            if self.verbose:
+                print(f"Error in parallel CVE processing for {cve.get('id', 'unknown')}: {e}")
+            # Don't register analysis outcomes for errors - return None
+            return cve.get('id', ''), None
+
+    @timed_method
+    def _batch_process_vulnerabilities(self, vulnerabilities: List[Dict], kernel_config: List[str], 
+                                     kernel_source_path: str, max_workers: Optional[int] = None) -> Dict[str, VulnerabilityAnalysis]:
+        """Process multiple vulnerabilities with parallel execution."""
+        if not vulnerabilities:
+            return {}
+        
+        check_interrupt()  # Check for interrupt before starting batch
+        
+        if max_workers is None:
+            max_workers = min(self.MAX_PARALLEL_WORKERS, len(vulnerabilities))
+        
+        results = {}
+        total_vulns = len(vulnerabilities)
+        completed = 0
+        start_time = time.time()
+        
+        if max_workers == 1 or len(vulnerabilities) == 1:
+            # Sequential processing with progress and ETA
+            for i, vuln in enumerate(vulnerabilities):
+                check_interrupt()  # Check for interrupt before each CVE
+                cve_id, analysis = self._process_cve_parallel(vuln, kernel_config, kernel_source_path)
+                if cve_id and analysis is not None:  # Only store actual analysis results
+                    results[cve_id] = analysis
+                
+                completed += 1
+                progress = (completed / total_vulns) * 100
+                
+                # Calculate ETA
+                elapsed_time = time.time() - start_time
+                if completed > 0:
+                    avg_time_per_cve = elapsed_time / completed
+                    remaining_cves = total_vulns - completed
+                    eta_seconds = remaining_cves * avg_time_per_cve
+                    eta_str = self._format_eta(eta_seconds) if remaining_cves > 0 else "Done"
+                    print(f"\r🔍 Progress: {completed}/{total_vulns} ({progress:.1f}%) - Current: {cve_id} - ETA: {eta_str}", end='', flush=True)
+                else:
+                    print(f"\r🔍 Progress: {completed}/{total_vulns} ({progress:.1f}%) - Current: {cve_id}", end='', flush=True)
+            
+            print()  # New line after progress
+        else:
+            # Parallel processing with progress and ETA
+            if self.verbose:
+                print(f"Processing {len(vulnerabilities)} vulnerabilities with {max_workers} workers")
+            
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # Submit all tasks
+                future_to_cve = {
+                    executor.submit(self._process_cve_parallel, vuln, kernel_config, kernel_source_path): vuln
+                    for vuln in vulnerabilities
+                }
+                
+                # Collect results as they complete with progress tracking and ETA
+                for future in as_completed(future_to_cve):
+                    check_interrupt()  # Check for interrupt while collecting results
+                    try:
+                        cve_id, analysis = future.result(timeout=300)  # 5 minute timeout per CVE
+                        if cve_id and analysis is not None:  # Only store actual analysis results
+                            results[cve_id] = analysis
+                    except Exception as e:
+                        vuln = future_to_cve[future]
+                        cve_id = vuln.get('id', 'unknown')
+                        if self.verbose:
+                            print(f"Parallel processing failed for {cve_id}: {e}")
+                        
+                        # Don't register analysis outcomes for errors - skip this CVE
+                    
+                    # Update progress with ETA
+                    completed += 1
+                    progress = (completed / total_vulns) * 100
+                    
+                    # Calculate ETA for parallel processing
+                    elapsed_time = time.time() - start_time
+                    if completed > 0:
+                        avg_time_per_cve = elapsed_time / completed
+                        remaining_cves = total_vulns - completed
+                        eta_seconds = remaining_cves * avg_time_per_cve
+                        eta_str = self._format_eta(eta_seconds) if remaining_cves > 0 else "Done"
+                        print(f"\r🔍 Progress: {completed}/{total_vulns} ({progress:.1f}%) - Last: {cve_id} - ETA: {eta_str}", end='', flush=True)
+                    else:
+                        print(f"\r🔍 Progress: {completed}/{total_vulns} ({progress:.1f}%) - Last: {cve_id}", end='', flush=True)
+                
+                print()  # New line after progress
+        
+        return results
+
+    @timed_method
+    def update_analysis_state(self, vex_data: Dict, kernel_config: List[str], kernel_source_path: str, 
+                            reanalyse: bool = False, cve_id: Optional[str] = None, 
+                            max_workers: Optional[int] = None) -> Dict:
+        """
+        Update VEX data with vulnerability analysis results.
+        
+        Args:
+            vex_data: VEX document to update
+            kernel_config: List of enabled kernel configuration options
+            kernel_source_path: Path to kernel source code
+            reanalyse: Force re-analysis of existing results
+            cve_id: Analyze only specific CVE (optional)
+            max_workers: Number of parallel workers (optional)
+        """
+        if not vex_data or 'vulnerabilities' not in vex_data:
+            raise ValueError("Invalid VEX data: missing vulnerabilities section")
+        
+        vulnerabilities = vex_data['vulnerabilities']
+        
+        if cve_id:
+            # Filter to specific CVE
+            vulnerabilities = [v for v in vulnerabilities if v.get('id') == cve_id]
+            if not vulnerabilities:
+                raise ValueError(f"CVE {cve_id} not found in VEX data")
+        
+        # Filter vulnerabilities that need analysis
+        to_analyze = []
+        for vuln in vulnerabilities:
+            cve_vuln_id = vuln.get('id', '')
+            
+            # Skip if already analyzed and not forcing re-analysis
+            if not reanalyse and 'analysis' in vuln:
+                existing_state = vuln['analysis'].get('state')
+                if existing_state in ['affected', 'not_affected']:
+                    if self.verbose:
+                        print(f"Skipping {cve_vuln_id} - already analyzed as {existing_state}")
+                    continue
+            
+            to_analyze.append(vuln)
+        
+        if not to_analyze:
+            if self.verbose:
+                print("No vulnerabilities need analysis")
+            return vex_data
+        
+        print(f"📊 Analysis Plan:")
+        print(f"   Total vulnerabilities: {len(vulnerabilities)}")
+        print(f"   Need analysis: {len(to_analyze)}")
+        print(f"   Already analyzed: {len(vulnerabilities) - len(to_analyze)}")
+        print()
+        
+        # Process vulnerabilities (potentially in parallel)
+        analysis_results = self._batch_process_vulnerabilities(
+            to_analyze, kernel_config, kernel_source_path, max_workers
+        )
+        
+        # Update VEX data with results
+        print("📝 Updating VEX data with analysis results...")
+        updated_count = 0
+        total_to_update = len(analysis_results)
+        update_start_time = time.time()
+        
+        for vuln in vex_data['vulnerabilities']:
+            cve_vuln_id = vuln.get('id', '')
+            
+            if cve_vuln_id in analysis_results:
+                analysis = analysis_results[cve_vuln_id]
+                
+                # Update the vulnerability analysis
+                vuln['analysis'] = analysis.to_dict()
+                updated_count += 1
+                
+                if self.verbose:
+                    print(f"Updated {cve_vuln_id}: {analysis.state.value}")
+                elif total_to_update > 5:  # Show progress for large updates
+                    progress = (updated_count / total_to_update) * 100
+                    
+                    # Calculate ETA for update process
+                    elapsed_time = time.time() - update_start_time
+                    if updated_count > 0 and updated_count < total_to_update:
+                        avg_time_per_update = elapsed_time / updated_count
+                        remaining_updates = total_to_update - updated_count
+                        eta_seconds = remaining_updates * avg_time_per_update
+                        eta_str = self._format_eta(eta_seconds)
+                        print(f"\r📝 Updating: {updated_count}/{total_to_update} ({progress:.1f}%) - ETA: {eta_str}", end='', flush=True)
+                    else:
+                        print(f"\r📝 Updating: {updated_count}/{total_to_update} ({progress:.1f}%)", end='', flush=True)
+        
+        if total_to_update > 5:
+            print()  # New line after progress
+        
+        print(f"✅ Updated {updated_count} vulnerabilities")
+        
+        return vex_data
+
+    @staticmethod
+    def save_vex_file(vex_data: Dict, file_path: str) -> None:
+        """Save VEX data to file with proper formatting."""
+        try:
+            with open(file_path, 'w') as f:
+                json.dump(vex_data, f, indent=2, sort_keys=True)
+        except Exception as e:
+            raise IOError(f"Failed to save VEX file {file_path}: {e}")
+
+    @timed_method
+    def generate_vulnerability_report(self, vex_data: Dict) -> Dict:
+        """Generate a comprehensive vulnerability report from VEX data."""
+        report = {
+            'affected': 0,
+            'not_affected': 0,
+            'under_investigation': 0,
+            'total': 0,
+            'vulnerabilities': {},
+            'summary': {},
+            'timestamp': time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        }
+        
+        if 'vulnerabilities' not in vex_data:
+            return report
+        
+        vulnerabilities = vex_data['vulnerabilities']
+        report['total'] = len(vulnerabilities)
+        
+        # Categorize vulnerabilities
+        by_state = {}
+        by_severity = {}
+        
+        for vuln in vulnerabilities:
+            cve_id = vuln.get('id', 'unknown')
+            analysis = vuln.get('analysis', {})
+            state = analysis.get('state', 'under_investigation')
+            
+            # Count by state
+            if state == 'affected':
+                report['affected'] += 1
+            elif state == 'not_affected':
+                report['not_affected'] += 1
+            else:
+                report['under_investigation'] += 1
+            
+            # Store vulnerability details
+            vuln_details = {
+                'state': state,
+                'justification': analysis.get('justification'),
+                'detail': analysis.get('detail'),
+                'timestamp': analysis.get('timestamp')
+            }
+            
+            # Add severity if available
+            severity = analysis.get('severity')
+            if severity:
+                vuln_details['severity'] = severity
+                by_severity[severity] = by_severity.get(severity, 0) + 1
+            
+            report['vulnerabilities'][cve_id] = vuln_details
+            by_state[state] = by_state.get(state, 0) + 1
+        
+        # Add summary statistics
+        report['summary'] = {
+            'by_state': by_state,
+            'by_severity': by_severity,
+            'completion_rate': (
+                (report['affected'] + report['not_affected']) / report['total'] * 100
+                if report['total'] > 0 else 0
+            )
+        }
+        
+        return report
+
+    def validate_vex_data(self, vex_data: Dict) -> List[str]:
+        """Validate VEX data structure and return list of issues."""
+        issues = []
+        
+        # Check required fields
+        if not isinstance(vex_data, dict):
+            issues.append("VEX data must be a dictionary")
+            return issues
+        
+        if 'vulnerabilities' not in vex_data:
+            issues.append("Missing 'vulnerabilities' section")
+            return issues
+        
+        vulnerabilities = vex_data['vulnerabilities']
+        if not isinstance(vulnerabilities, list):
+            issues.append("'vulnerabilities' must be a list")
+            return issues
+        
+        if not vulnerabilities:
+            issues.append("No vulnerabilities found in VEX data")
+            return issues
+        
+        # Validate each vulnerability
+        for i, vuln in enumerate(vulnerabilities):
+            vuln_prefix = f"Vulnerability {i+1}"
+            
+            if not isinstance(vuln, dict):
+                issues.append(f"{vuln_prefix}: must be a dictionary")
+                continue
+            
+            # Check required fields
+            if 'id' not in vuln:
+                issues.append(f"{vuln_prefix}: missing 'id' field")
+            else:
+                cve_id = vuln['id']
+                if not cve_id or not isinstance(cve_id, str):
+                    issues.append(f"{vuln_prefix}: 'id' must be a non-empty string")
+                elif not cve_id.startswith('CVE-'):
+                    issues.append(f"{vuln_prefix}: 'id' should start with 'CVE-'")
+            
+            # Validate analysis section if present
+            if 'analysis' in vuln:
+                analysis = vuln['analysis']
+                if not isinstance(analysis, dict):
+                    issues.append(f"{vuln_prefix}: 'analysis' must be a dictionary")
+                else:
+                    if 'state' in analysis:
+                        state = analysis['state']
+                        valid_states = ['affected', 'not_affected', 'under_investigation']
+                        if state not in valid_states:
+                            issues.append(f"{vuln_prefix}: invalid state '{state}', must be one of {valid_states}")
+        
+        return issues
+
+    def print_vulnerability_summary(self, report: Dict) -> None:
+        """Print a formatted vulnerability summary report."""
+        print("\n" + "="*60)
+        print("VULNERABILITY ANALYSIS SUMMARY")
+        print("="*60)
+        
+        total = report.get('total', 0)
+        affected = report.get('affected', 0)
+        not_affected = report.get('not_affected', 0)
+        under_investigation = report.get('under_investigation', 0)
+        
+        print(f"Total vulnerabilities analyzed: {total}")
+        print(f"├─ ✅ Not affected: {not_affected}")
+        print(f"├─ ⚠️  Affected: {affected}")
+        print(f"└─ 🔍 Under investigation: {under_investigation}")
+        
+        if total > 0:
+            completion_rate = ((affected + not_affected) / total) * 100
+            print(f"\nAnalysis completion rate: {completion_rate:.1f}%")
+        
+        # Show severity breakdown if available
+        summary = report.get('summary', {})
+        by_severity = summary.get('by_severity', {})
+        if by_severity:
+            print(f"\nSeverity breakdown:")
+            for severity, count in sorted(by_severity.items()):
+                print(f"  {severity}: {count}")
+        
+        # Show affected vulnerabilities if any
+        if affected > 0:
+            print(f"\n⚠️  AFFECTED VULNERABILITIES:")
+            vulnerabilities = report.get('vulnerabilities', {})
+            affected_list = [
+                cve_id for cve_id, details in vulnerabilities.items() 
+                if details.get('state') == 'affected'
+            ]
+            for cve_id in sorted(affected_list[:10]):  # Show first 10
+                vuln_details = vulnerabilities[cve_id]
+                detail = vuln_details.get('detail', 'No details available')
+                print(f"  • {cve_id}: {detail}")
+            
+            if len(affected_list) > 10:
+                print(f"  ... and {len(affected_list) - 10} more")
+        
+        print("="*60)
+
+    def test_webdriver_functionality(self) -> bool:
+        """Test WebDriver functionality for patch fetching."""
+        if not SELENIUM_AVAILABLE:
+            print("❌ Selenium not available")
+            return False
+        
+        if not self.edge_driver_path:
+            print("❌ Edge driver path not configured")
+            return False
+        
+        if not os.path.exists(self.edge_driver_path):
+            print(f"❌ Edge driver not found: {self.edge_driver_path}")
+            return False
+        
+        try:
+            if self.verbose:
+                print("Testing WebDriver functionality...")
+            
+            # Import here to avoid issues when Selenium is not available
+            from selenium import webdriver
+            from selenium.webdriver.edge.service import Service
+            
+            service = Service(self.edge_driver_path)
+            options = webdriver.EdgeOptions()
+            options.add_argument('--headless')
+            options.add_argument('--disable-gpu')
+            options.add_argument('--no-sandbox')
+            
+            driver = webdriver.Edge(service=service, options=options)
+            driver.set_page_load_timeout(10)
+            
+            # Test with a simple page
+            driver.get("https://httpbin.org/html")
+            
+            # Check if we can find elements
+            page_source = driver.page_source
+            success = bool(page_source and len(page_source) > 100)
+            
+            driver.quit()
+            
+            if success:
+                print("✅ WebDriver functionality test passed")
+                return True
+            else:
+                print("❌ WebDriver test failed - no content retrieved")
+                return False
+                
+        except Exception as e:
+            print(f"❌ WebDriver test failed: {e}")
+            return False
+
+    def print_performance_stats(self):
+        """Print performance statistics."""
+        print("\n" + "="*60)
+        print("PERFORMANCE STATISTICS")
+        print("="*60)
+        
+        # Print performance tracker summary
+        perf_tracker.print_summary()
+        
+        # Print cache statistics
+        print(f"CVEs processed: {len(self._processed_cves)}")
+        
+        # Print cache sizes
+        print(f"\nCache sizes:")
+        print(f"  Makefile cache: {len(self._makefile_cache)}")
+        print(f"  Config cache: {len(self._config_cache)}")
+        print(f"  Source analysis cache: {len(self._source_analysis_cache)}")
+        print(f"  File content cache: {len(self._file_content_cache)}")
+        
+        print("="*60)
+
+    @timed_method
+    def _advanced_config_search(self, source_file_path: str, kernel_source_path: str) -> Set[str]:
+        """Advanced configuration search using multiple strategies."""
+        config_options = set()
+        
+        # Strategy 1: Source file analysis
+        source_configs = self._analyze_source_file_config_hints(source_file_path)
+        config_options.update(source_configs)
+        
+        # Strategy 2: Path-based inference
+        path_configs = self._infer_config_from_path(source_file_path, kernel_source_path)
+        config_options.update(path_configs)
+        
+        # Strategy 3: Comprehensive Makefile search
+        comprehensive_configs = self._search_all_makefiles(source_file_path, kernel_source_path)
+        config_options.update(comprehensive_configs)
+        
+        return config_options
+
+    @timed_method
+    def _search_all_makefiles(self, source_file_path: str, kernel_source_path: str) -> Set[str]:
+        """Search all relevant Makefiles using optimized patterns."""
+        config_options = set()
+        
+        # Get directory of source file relative to kernel source
+        try:
+            rel_path = os.path.relpath(source_file_path, kernel_source_path)
+            search_dirs = []
+            
+            # Add directories to search
+            path_parts = rel_path.split(os.sep)
+            for i in range(len(path_parts)):
+                partial_path = os.path.join(kernel_source_path, *path_parts[:i+1])
+                if os.path.isdir(partial_path):
+                    search_dirs.append(partial_path)
+                else:
+                    # Try parent directory
+                    parent_dir = os.path.dirname(partial_path)
+                    if os.path.isdir(parent_dir):
+                        search_dirs.append(parent_dir)
+                        break
+            
+            # Search common kernel directories
+            common_dirs = ['drivers', 'net', 'fs', 'arch', 'sound', 'crypto']
+            for common_dir in common_dirs:
+                common_path = os.path.join(kernel_source_path, common_dir)
+                if os.path.isdir(common_path) and any(part in rel_path for part in [common_dir]):
+                    search_dirs.append(common_path)
+            
+            # Process directories by priority
+            processed_dirs = set()
+            for search_dir in search_dirs[:10]:  # Limit to top 10 directories
+                if search_dir not in processed_dirs:
+                    processed_dirs.add(search_dir)
+                    self._analyze_related_makefiles(search_dir, source_file_path, kernel_source_path, config_options)
                     
         except Exception as e:
             if self.verbose:
-                print(f"Error in global Makefile search: {e}")
+                print(f"Error in comprehensive makefile search: {e}")
         
         return config_options
 
+    @timed_method
     def _analyze_source_file_config_hints(self, source_file_path: str) -> Set[str]:
-        """Analyze source file content for configuration hints with caching.
-        
-        Look for #ifdef CONFIG_* patterns and other hints in the source code.
-        
-        Args:
-            source_file_path: Path to source file
-            
-        Returns:
-            Set of configuration options found
         """
-        # Check cache first
-        if source_file_path in self._path_cache:
-            return self._path_cache[source_file_path]
-        
+        Look for #ifdef CONFIG_* patterns and other hints in the source code.
+        """
         config_options = set()
         
+        # Check cache first
+        if source_file_path in self._source_analysis_cache:
+            self._cache_hits['source'] += 1
+            return self._source_analysis_cache[source_file_path]
+        
+        self._cache_misses['source'] += 1
+        
         try:
-            # Use cached file content
-            content = self._get_cached_file_content(source_file_path)
-            if not content:
-                self._path_cache[source_file_path] = config_options
+            # Check if file exists in kernel source
+            if not os.path.exists(source_file_path):
                 return config_options
             
-            # Use precompiled patterns for better performance
+            content = self._get_cached_file_content(source_file_path)
+            
+            # Use compiled patterns for performance
             ifdef_pattern = self._patch_patterns[1]  # #ifdef pattern
             if_defined_pattern = self._patch_patterns[2]  # #if defined pattern  
             is_enabled_pattern = self._patch_patterns[3]  # IS_ENABLED pattern
             
-            # Find all matches efficiently
             for pattern in [ifdef_pattern, if_defined_pattern, is_enabled_pattern]:
-                for match in pattern.finditer(content):
-                    config_options.add(match.group(1))
+                matches = pattern.findall(content)
+                for match in matches:
+                    if isinstance(match, tuple):
+                        config_option = match[0] if match else ""
+                    else:
+                        config_option = match
+                    
+                    if config_option and config_option.startswith('CONFIG_'):
+                        config_options.add(config_option)
             
-            if config_options and self.verbose:
-                print(f"Found config hints in source file {source_file_path}: {', '.join(config_options)}")
-        
+            # Cache the result
+            self._source_analysis_cache[source_file_path] = config_options
+            
         except Exception as e:
             if self.verbose:
                 print(f"Error analyzing source file {source_file_path}: {e}")
         
-        # Cache the result
-        self._path_cache[source_file_path] = config_options
-        
-        # Limit cache size
-        if len(self._path_cache) > 200:
-            # Remove oldest entries
-            oldest_keys = list(self._path_cache.keys())[:50]
-            for key in oldest_keys:
-                del self._path_cache[key]
-        
         return config_options
 
+    @timed_method
     def _infer_config_from_path(self, source_file_path: str, kernel_source_path: str) -> Set[str]:
-        """Infer configuration options from file path using common kernel conventions.
-        
-        Args:
-            source_file_path: Path to source file
-            kernel_source_path: Root path of kernel sources
-            
-        Returns:
-            Set of configuration options inferred from path
-        """
+        """Infer likely configuration options from source file path."""
         config_options = set()
         
         try:
@@ -1794,1109 +2200,309 @@ class VexKernelChecker:
             rel_path = os.path.relpath(source_file_path, kernel_source_path)
             path_parts = rel_path.split(os.sep)
             
-            # Common kernel subsystem to config mappings
-            subsystem_configs = {
+            # Common path-to-config mappings
+            path_mappings = {
                 'drivers/net': ['CONFIG_NET', 'CONFIG_NETDEVICES'],
+                'drivers/bluetooth': ['CONFIG_BT'],
+                'drivers/wireless': ['CONFIG_WIRELESS', 'CONFIG_WLAN'],
                 'drivers/usb': ['CONFIG_USB'],
                 'drivers/pci': ['CONFIG_PCI'],
-                'drivers/block': ['CONFIG_BLOCK'],
-                'drivers/scsi': ['CONFIG_SCSI'],
-                'drivers/char': ['CONFIG_CHAR_DEVICES'],
-                'fs': ['CONFIG_FILESYSTEMS'],
-                'net': ['CONFIG_NET'],
-                'sound': ['CONFIG_SOUND'],
-                'crypto': ['CONFIG_CRYPTO'],
-                'security': ['CONFIG_SECURITY'],
-                'mm': ['CONFIG_MM'],
-                'kernel': ['CONFIG_KERNEL'],
+                'net/': ['CONFIG_NET'],
+                'fs/': ['CONFIG_FS'],
+                'sound/': ['CONFIG_SOUND', 'CONFIG_SND'],
+                'crypto/': ['CONFIG_CRYPTO'],
+                'security/': ['CONFIG_SECURITY'],
+                'arch/arm64': ['CONFIG_ARM64'],
+                'arch/x86': ['CONFIG_X86'],
+                'drivers/gpu': ['CONFIG_DRM'],
+                'drivers/media': ['CONFIG_MEDIA'],
+                'drivers/staging': ['CONFIG_STAGING'],
             }
             
-            # Check for subsystem matches
-            for subsystem, configs in subsystem_configs.items():
-                if subsystem in rel_path:
+            # Check path mappings
+            for path_pattern, configs in path_mappings.items():
+                if path_pattern in rel_path:
                     config_options.update(configs)
-                    if self.verbose:
-                        print(f"Inferred config options from path subsystem {subsystem}: {', '.join(configs)}")
             
-            # Try to infer from directory names
+            # Generate CONFIG options from directory names
             for part in path_parts:
-                if part.startswith('drivers'):
-                    continue  # Skip the generic 'drivers' part
+                if part and part != '.':
+                    # Convert directory name to config option format
+                    config_name = f"CONFIG_{part.upper().replace('-', '_').replace('.', '_')}"
+                    if re.match(r'CONFIG_[A-Z0-9_]+$', config_name):
+                        config_options.add(config_name)
+            
+            # Special handling for known subsystems
+            if 'bluetooth' in rel_path.lower():
+                config_options.update(['CONFIG_BT', 'CONFIG_BT_BREDR'])
+            if 'wireless' in rel_path.lower() or 'wifi' in rel_path.lower():
+                config_options.update(['CONFIG_WIRELESS', 'CONFIG_WLAN'])
+            if 'ethernet' in rel_path.lower():
+                config_options.update(['CONFIG_NET', 'CONFIG_ETHERNET'])
                 
-                # Convert directory names to potential config names
-                potential_config = f"CONFIG_{part.upper().replace('-', '_')}"
-                if re.match(r'^CONFIG_[A-Z0-9_]+$', potential_config):
-                    config_options.add(potential_config)
-                    if self.verbose:
-                        print(f"Inferred config option from directory name: {potential_config}")
-                        
         except Exception as e:
             if self.verbose:
-                print(f"Error inferring config from path: {e}")
+                print(f"Error inferring config from path {source_file_path}: {e}")
         
         return config_options
 
+    @timed_method  
     def in_kernel_config(self, config_options: Set[str], kernel_config: List[str]) -> VulnerabilityAnalysis:
-        """Check if configuration options are enabled in kernel config and return analysis.
+        """Check if configuration options are enabled in kernel config."""
+        # Include architecture-specific configs from detected architecture
+        all_config_options = set(config_options)
+        arch_configs = self.get_arch_specific_configs()
+        if arch_configs:
+            all_config_options.update(arch_configs)
+            if self.verbose and arch_configs:
+                print(f"Added architecture-specific configs: {', '.join(arch_configs)}")
         
-        Args:
-            config_options: Set of configuration options to check
-            kernel_config: List of enabled kernel configuration options
-            
-        Returns:
-            VulnerabilityAnalysis object with the result
-        """
-        if config_options <= self.ENABLED_DEFAULT_OPTIONS:
-            return VulnerabilityAnalysis(
-                state=VulnerabilityState.AFFECTED,
-                detail=f"Uses default enabled options: {', '.join(config_options)}",
-                timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-            )
-        
-        if config_options == set():
-            return VulnerabilityAnalysis(
-                state=VulnerabilityState.AFFECTED,
-                detail="No specific configuration options found - assuming vulnerable",
-                timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-            )
-        
-        missing_options = config_options - set(kernel_config)
-        if missing_options:
-            return VulnerabilityAnalysis(
-                state=VulnerabilityState.NOT_AFFECTED,
-                justification=Justification.REQUIRES_CONFIGURATION,
-                detail=f"Required configuration options not enabled: {', '.join(missing_options)}",
-                timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-            )
-        
-        return VulnerabilityAnalysis(
-            state=VulnerabilityState.AFFECTED,
-            detail=f"All required configuration options are enabled: {', '.join(config_options)}",
-            timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        )
-
-    @staticmethod
-    def extract_arch_info(path: str) -> Tuple[Optional[str], Optional[str]]:
-        """Extract architecture information from file path.
-        
-        Args:
-            path: File path to analyze
-            
-        Returns:
-            Tuple of (architecture_name, architecture_config)
-        """
-        match = re.search(r'arch/([^/]+)/', path)
-        if match:
-            arch_name = match.group(1)
-            arch_config = f"CONFIG_ARCH_{arch_name.upper()}"
-            return arch_name, arch_config
-        return None, None
-
-    @timed_method
-    def check_kernel_config(self, cve: Dict, kernel_config: List[str], kernel_source_path: str) -> VulnerabilityAnalysis:
-        """Check if a CVE affects the current kernel configuration.
-        
-        Args:
-            cve: CVE vulnerability data
-            kernel_config: List of enabled kernel configuration options
-            kernel_source_path: Path to kernel source directory
-            
-        Returns:
-            VulnerabilityAnalysis object with the assessment result
-        """
-        cve_id = cve.get('id', 'Unknown')
-        
-        # Check if already processed
-        if cve_id in self._processed_cves:
-            if self.verbose:
-                print(f"CVE {cve_id} already processed, skipping")
-            return None
-        
-        self._processed_cves.add(cve_id)
-        
-        cve_info = self.fetch_cve_details(cve_id)
-        if not cve_info:
-            # Skip CVE if we can't fetch details - don't mark as under_investigation
-            if self.verbose:
-                print(f"Skipping CVE {cve_id}: Could not fetch CVE details from NVD")
-            return None
-        
-        # Check if this CVE is kernel-related - skip if not (unless analyzing all CVEs)
-        if not self.analyze_all_cves and not self.is_kernel_related_cve(cve_info):
-            if self.verbose:
-                print(f"Skipping CVE {cve_id}: Not kernel-related (use --analyze-all-cves to include)")
-            return VulnerabilityAnalysis(
-                state=VulnerabilityState.NOT_AFFECTED,
-                justification=Justification.COMPONENT_NOT_PRESENT,
-                detail=f"CVE is not related to the Linux kernel - skipped from kernel analysis.",
-                timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-            )
-        
-        # Only attempt patch checking if it's enabled
-        if not self.check_patches:
-            # Perform config-only analysis when patch checking is disabled
-            if self.verbose:
-                print(f"Performing config-only analysis for CVE {cve_id} (patch checking disabled)")
-            
-            return VulnerabilityAnalysis(
-                state=VulnerabilityState.UNDER_INVESTIGATION,
-                justification=Justification.REQUIRES_CONFIGURATION,
-                detail=f"Config-only analysis - patch checking disabled. Manual review recommended to determine if CVE affects this kernel configuration.",
-                timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-            )
-        
-        # Attempt patch-based analysis when enabled
-        patch_url = self.extract_patch_url(cve_info)
-        if not patch_url:
-            # Fall back to config-only analysis if no patch URL found
-            if self.verbose:
-                print(f"No patch URL found for CVE {cve_id}, falling back to config-only analysis")
-            
-            return VulnerabilityAnalysis(
-                state=VulnerabilityState.UNDER_INVESTIGATION,
-                justification=Justification.REQUIRES_CONFIGURATION,
-                detail=f"No patch URL available in CVE references. Manual review recommended to determine impact.",
-                timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-            )
-        
-        patch_info = self.fetch_patch_content_with_github_priority(patch_url)
-        
-        if not patch_info:
-            # Fall back to config-only analysis if patch content cannot be fetched
-            if self.verbose:
-                print(f"Could not fetch patch content for CVE {cve_id}, falling back to config-only analysis")
-            
-            return VulnerabilityAnalysis(
-                state=VulnerabilityState.UNDER_INVESTIGATION,
-                justification=Justification.REQUIRES_CONFIGURATION,
-                detail=f"Could not fetch patch content from {patch_url}. Manual review recommended.",
-                timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-            )
-        
-        sourcefiles = self.extract_sourcefiles(patch_info)
-        if not sourcefiles:
-            return VulnerabilityAnalysis(
-                state=VulnerabilityState.NOT_AFFECTED,
-                justification=Justification.VULNERABLE_CODE_NOT_PRESENT,
-                detail="No C source files found in patch",
-                timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-            )
-        
-        if self.verbose:
-            print(f"Source files found in the patch: {sourcefiles}")
-        
-        all_config_options = set()
-        architecture_issues = []
-        
-        for sourcefile in sourcefiles:
-            source_file_path = self._replace_multiple_substrings(sourcefile, self.PATH_REPLACEMENTS)
-            arch, arch_config = self.extract_arch_info(source_file_path)
-            
-            if arch and not arch.startswith("arm"):
-                architecture_issues.append(arch_config)
-                continue
-            
-            source_file_path = os.path.join(kernel_source_path, source_file_path)
-            if self.verbose:
-                print(f"Analyzing source path: {source_file_path}")
-            
-            config_options = self.find_makefiles_config_options(source_file_path, kernel_source_path)
-            if not config_options:
-                config_options = self.find_makefiles_config_options(
-                    re.sub(r'_[^_]+', '', source_file_path), kernel_source_path
-                )
-            if not config_options:
-                parent_source_dir = os.path.dirname(source_file_path)
-                while parent_source_dir != "" and parent_source_dir != kernel_source_path and not config_options:
-                    config_options = self.find_makefiles_config_options(parent_source_dir, kernel_source_path)
-                    parent_source_dir = os.path.dirname(parent_source_dir)
-
-            if config_options:
-                all_config_options.update(config_options)
-                if self.verbose:
-                    print(f"Config options for {sourcefile}: {config_options}")
-        
-        # Handle architecture-specific issues
-        if architecture_issues and not all_config_options:
-            return VulnerabilityAnalysis(
-                state=VulnerabilityState.NOT_AFFECTED,
-                justification=Justification.COMPONENT_NOT_PRESENT,
-                detail=f"Affects non-ARM architectures: {', '.join(architecture_issues)}",
-                timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-            )
-        
-        # If no configuration options found at all
         if not all_config_options:
             return VulnerabilityAnalysis(
                 state=VulnerabilityState.UNDER_INVESTIGATION,
-                detail="Could not determine configuration requirements from Makefiles",
+                justification=Justification.COMPONENT_NOT_PRESENT,
+                response=Response.CAN_NOT_FIX,
+                detail="No configuration options found - manual review needed",
                 timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             )
         
-        if self.verbose:
-            print(f"Total config options for CVE {cve_id}: {all_config_options}")
-        return self.in_kernel_config(all_config_options, kernel_config)
-
-    def is_kernel_related_cve(self, cve_info: CVEInfo) -> bool:
-        """Determine if a CVE is related to the Linux kernel.
+        # Check if using only default enabled options
+        if all_config_options <= self.ENABLED_DEFAULT_OPTIONS:
+            return VulnerabilityAnalysis(
+                state=VulnerabilityState.AFFECTED,
+                justification=Justification.VULNERABLE_CODE_PRESENT,
+                response=Response.UPDATE,
+                detail=f"Uses default enabled options: {', '.join(all_config_options)}",
+                timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            )
         
-        This method analyzes various aspects of the CVE to determine if it's
-        kernel-related, including:
-        - CVE description text
-        - Patch URLs pointing to kernel repositories
-        - Reference URLs and tags
+        # Check each config option
+        enabled_configs = set()
+        disabled_configs = set()
         
-        Args:
-            cve_info: CVE information object
+        for config in all_config_options:
+            if any(config in line for line in kernel_config):
+                enabled_configs.add(config)
+            else:
+                disabled_configs.add(config)
+        
+        # Determine vulnerability state
+        if enabled_configs:
+            detail_parts = []
+            if enabled_configs & config_options:
+                detail_parts.append(f"Enabled configs: {', '.join(enabled_configs & config_options)}")
+            if enabled_configs & arch_configs:
+                detail_parts.append(f"Architecture ({self.arch}): {', '.join(enabled_configs & arch_configs)}")
             
-        Returns:
-            True if the CVE appears to be kernel-related, False otherwise
-        """
-        if not cve_info:
-            return False
-        
-        # Check description for kernel-related keywords
-        description = cve_info.description.lower() if cve_info.description else ""
-        
-        # Strong kernel indicators in description
-        kernel_keywords = [
-            'linux kernel', 'kernel', 'vmlinux', 'kmod', 'ksymtab',
-            'syscall', 'system call', 'kernel module', 'kernel space',
-            'kernel driver', 'kernel panic', 'kernel oops', 'kernel crash',
-            'kernel memory', 'kernel buffer', 'kernel stack', 'kernel heap',
-            'kernel thread', 'kernel process', 'kernel scheduler',
-            'kernel filesystem', 'kernel network', 'kernel security',
-            'kernel vulnerability', 'kernel bug', 'kernel fix',
-            'kernel patch', 'kernel source', 'kernel code',
-            'kernel implementation', 'kernel subsystem',
-            'device driver', 'kernel api', 'kernel function',
-            'kernel data structure', 'kernel interface'
+            return VulnerabilityAnalysis(
+                state=VulnerabilityState.AFFECTED,
+                justification=Justification.VULNERABLE_CODE_PRESENT,
+                response=Response.UPDATE,
+                detail="; ".join(detail_parts),
+                timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            )
+        else:
+            return VulnerabilityAnalysis(
+                state=VulnerabilityState.NOT_AFFECTED,
+                justification=Justification.COMPONENT_NOT_PRESENT,
+                response=Response.WILL_NOT_FIX,
+                detail=f"Required configs not enabled: {', '.join(disabled_configs)}",
+                timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            )
+
+    @staticmethod
+    def extract_arch_from_config(kernel_config: List[str]) -> Tuple[Optional[str], Optional[str]]:
+        """Extract architecture information from kernel configuration."""
+        # Architecture config mappings - order matters, check specific configs first
+        arch_config_mappings = [
+            # Check 64-bit variants first
+            ('CONFIG_X86_64', ('x86_64', 'CONFIG_X86_64')),
+            ('CONFIG_SPARC64', ('sparc64', 'CONFIG_SPARC64')),
+            # Then check main architecture configs
+            ('CONFIG_ARM64', ('arm64', 'CONFIG_ARM64')),
+            ('CONFIG_ARM', ('arm', 'CONFIG_ARM')),
+            ('CONFIG_X86', ('x86', 'CONFIG_X86')),
+            ('CONFIG_MIPS', ('mips', 'CONFIG_MIPS')),
+            ('CONFIG_POWERPC', ('powerpc', 'CONFIG_POWERPC')),
+            ('CONFIG_PPC', ('powerpc', 'CONFIG_PPC')),
+            ('CONFIG_RISCV', ('riscv', 'CONFIG_RISCV')),
+            ('CONFIG_S390', ('s390', 'CONFIG_S390')),
+            ('CONFIG_SPARC', ('sparc', 'CONFIG_SPARC')),
+            ('CONFIG_ALPHA', ('alpha', 'CONFIG_ALPHA')),
+            ('CONFIG_IA64', ('ia64', 'CONFIG_IA64')),
+            ('CONFIG_M68K', ('m68k', 'CONFIG_M68K')),
+            ('CONFIG_MICROBLAZE', ('microblaze', 'CONFIG_MICROBLAZE')),
+            ('CONFIG_PARISC', ('parisc', 'CONFIG_PARISC')),
+            ('CONFIG_SH', ('sh', 'CONFIG_SH')),
+            ('CONFIG_UML', ('um', 'CONFIG_UML')),
+            ('CONFIG_XTENSA', ('xtensa', 'CONFIG_XTENSA')),
         ]
         
-        # Check for kernel keywords in description
-        if any(keyword in description for keyword in kernel_keywords):
-            if self.verbose:
-                print(f"CVE {cve_info.cve_id} identified as kernel-related based on description keywords")
-            return True
+        # Check for exact architecture config options in order of specificity
+        for config_option in kernel_config:
+            for arch_config, (arch, arch_config_name) in arch_config_mappings:
+                if config_option == arch_config:
+                    return arch, arch_config_name
+                
+        # If no explicit architecture config found, try to infer from sub-arch configs
+        for config_option in kernel_config:
+            # ARM64 specific configs
+            if config_option.startswith('CONFIG_ARM64_'):
+                return 'arm64', 'CONFIG_ARM64'
+            # ARM specific configs  
+            elif config_option.startswith('CONFIG_ARM_'):
+                return 'arm', 'CONFIG_ARM'
+            # x86 specific configs
+            elif config_option.startswith('CONFIG_X86_') and config_option != 'CONFIG_X86_64':
+                return 'x86', 'CONFIG_X86'
+            # MIPS specific configs
+            elif config_option.startswith('CONFIG_MIPS_'):
+                return 'mips', 'CONFIG_MIPS'
+            # PowerPC specific configs
+            elif config_option.startswith('CONFIG_PPC_') or config_option.startswith('CONFIG_POWERPC_'):
+                return 'powerpc', 'CONFIG_POWERPC'
+            # RISCV specific configs
+            elif config_option.startswith('CONFIG_RISCV_'):
+                return 'riscv', 'CONFIG_RISCV'
         
-        # Check patch URLs for kernel repositories
-        if cve_info.patch_urls:
-            kernel_repo_indicators = [
-                'git.kernel.org',
-                'github.com/torvalds/linux',
-                'lore.kernel.org',
-                'patchwork.kernel.org',
-                'kernel.org',
-                'linux-kernel',
-                'stable/linux'
-            ]
-            
-            for patch_url in cve_info.patch_urls:
-                if any(indicator in patch_url.lower() for indicator in kernel_repo_indicators):
-                    if self.verbose:
-                        print(f"CVE {cve_info.cve_id} identified as kernel-related based on patch URL: {patch_url}")
-                    return True
-        
-        # Additional heuristics based on CVE ID patterns
-        # Some CVE databases have patterns for kernel CVEs
-        cve_id = cve_info.cve_id
-        
-        # If we have patch URLs but none are clearly kernel-related,
-        # and description doesn't contain kernel keywords, likely not kernel-related
-        if cve_info.patch_urls and not any(keyword in description for keyword in [
-            'linux', 'kernel', 'driver', 'syscall', 'module'
-        ]):
-            # Check for non-kernel indicators
-            non_kernel_indicators = [
-                'apache', 'nginx', 'mysql', 'postgresql', 'mongodb',
-                'nodejs', 'python', 'java', 'php', 'ruby', 'perl',
-                'docker', 'kubernetes', 'openssl', 'gnutls',
-                'firefox', 'chrome', 'webkit', 'browser',
-                'wordpress', 'drupal', 'joomla',
-                'windows', 'macos', 'android', 'ios'
-            ]
-            
-            if any(indicator in description for indicator in non_kernel_indicators):
-                if self.verbose:
-                    print(f"CVE {cve_info.cve_id} identified as non-kernel-related based on software indicators")
-                return False
-        
-        # If no clear indicators either way, err on the side of caution
-        # and include it (conservative approach)
-        if self.verbose:
-            print(f"CVE {cve_info.cve_id} classification unclear - including for analysis (conservative approach)")
-        
-        return True
+        return None, None
 
-    def _process_cve_parallel(self, cve: Dict, kernel_config: List[str], kernel_source_path: str) -> Tuple[str, VulnerabilityAnalysis]:
-        """Process a single CVE for parallel execution.
+    @staticmethod
+    def extract_arch_info(path: str) -> Tuple[Optional[str], Optional[str]]:
+        """Extract architecture information from file path (legacy method)."""
+        arch_patterns = {
+            'x86': r'arch/x86/',
+            'arm64': r'arch/arm64/',
+            'arm': r'arch/arm/',
+            'mips': r'arch/mips/',
+            'powerpc': r'arch/powerpc/',
+            'riscv': r'arch/riscv/',
+            's390': r'arch/s390/',
+            'sparc': r'arch/sparc/',
+        }
         
-        Args:
-            cve: CVE vulnerability data
-            kernel_config: List of enabled kernel configuration options
-            kernel_source_path: Path to kernel source directory
-            
-        Returns:
-            Tuple of (CVE ID, VulnerabilityAnalysis)
-        """
-        cve_id = cve.get('id', 'Unknown')
-        try:
-            analysis = self.check_kernel_config(cve, kernel_config, kernel_source_path)
-            if analysis is None:
-                # CVE was skipped due to patch checking failure
-                return cve_id, None
-            return cve_id, analysis
-        except Exception as e:
-            error_analysis = VulnerabilityAnalysis(
-                state=VulnerabilityState.UNDER_INVESTIGATION,
-                detail=f"Processing error: {str(e)}",
-                timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-            )
-            return cve_id, error_analysis
+        for arch, pattern in arch_patterns.items():
+            if re.search(pattern, path):
+                # Special mapping for architectures
+                if arch == 'arm':
+                    return arch, "CONFIG_ARM"
+                elif arch == 'arm64':
+                    return arch, "CONFIG_ARM64"
+                else:
+                    return arch, f"CONFIG_{arch.upper()}"
+        
+        return None, None
 
-    @timed_method
-    def _batch_process_vulnerabilities(self, vulnerabilities: List[Dict], kernel_config: List[str], 
-                                     kernel_source_path: str, reanalyse: bool = False, 
-                                     cve_id: Optional[str] = None) -> Dict[str, VulnerabilityAnalysis]:
-        """Process vulnerabilities in parallel batches for better performance.
+    def _filter_relevant_config_options(self, config_options: Set[str]) -> Set[str]:
+        """Filter out build-time, debug, and irrelevant configuration options."""
+        filtered_configs = set()
         
-        Args:
-            vulnerabilities: List of vulnerability data
-            kernel_config: List of enabled kernel configuration options
-            kernel_source_path: Path to kernel source directory
-            reanalyse: Whether to re-analyze all vulnerabilities
-            cve_id: Specific CVE ID to process
+        # Options to filter out (build-time, debug, experimental, etc.)
+        filter_patterns = [
+            # Build and compile time options
+            'CC_HAS_', 'GCC_PLUGIN_', 'LTO_', 'CFI_', 'CLANG_',
+            'COMPILE_', 'BUILD_', '_BUILD', 'HEADERS_INSTALL',
+            'STRIP_ASM_SYMS', 'FRAME_WARN', 'MCOUNT',
             
-        Returns:
-            Dictionary mapping CVE IDs to analysis results
-        """
-        results = {}
-        vulnerabilities_to_process = []
-        
-        # Filter vulnerabilities to process
-        for vulnerability in vulnerabilities:
-            vuln_id = vulnerability.get('id', 'Unknown')
+            # Debug and tracing options
+            'DEBUG_', 'FTRACE_', 'FUNCTION_GRAPH_TRACER',
+            'DEBUG_INFO_BTF', 'STACK_VALIDATION',
             
-            if cve_id and cve_id != vuln_id:
-                continue
+            # Expert/experimental options
+            'EXPERT', 'EXPERIMENTAL', 'BROKEN',
             
-            if not reanalyse and 'analysis' in vulnerability:
-                if self.verbose:
-                    print(f"Skipping CVE {vuln_id} as it already has an analysis.")
-                continue
+            # Test options
+            'KUNIT', 'SELFTEST', 'TEST_',
             
-            vulnerabilities_to_process.append(vulnerability)
+            # Architecture specific that are usually not relevant for CVE analysis
+            'SUPERH', 'UML', 'ARCH_SUPPORTS_',
+            
+            # Performance optimization flags
+            'OPTIMIZE_FOR_', 'SHADOW_CALL_STACK', 'RETHUNK',
+            
+            # Init options that don't affect runtime
+            'INIT_STACK_', 'AUTO_VAR_INIT_'
+        ]
         
-        if not vulnerabilities_to_process:
-            return results
+        for config in config_options:
+            # Keep config if it doesn't match any filter pattern
+            if not any(pattern in config for pattern in filter_patterns):
+                filtered_configs.add(config)
         
-        print(f"Processing {len(vulnerabilities_to_process)} vulnerabilities in parallel...")
+        return filtered_configs
+
+    def get_arch_specific_configs(self) -> Set[str]:
+        """Get architecture-specific configuration options from detected architecture."""
+        arch_configs = set()
         
-        # Process in parallel with limited workers to avoid overwhelming the system
-        with ThreadPoolExecutor(max_workers=min(self.MAX_PARALLEL_WORKERS, len(vulnerabilities_to_process))) as executor:
-            # Submit all tasks
-            future_to_cve = {
-                executor.submit(self._process_cve_parallel, vuln, kernel_config, kernel_source_path): vuln.get('id', 'Unknown')
-                for vuln in vulnerabilities_to_process
+        if self.arch and self.arch_config:
+            arch_configs.add(self.arch_config)
+            
+            # Add common architecture-specific configs
+            arch_specific_mappings = {
+                'arm': ['CONFIG_ARM', 'CONFIG_ARM_THUMB', 'CONFIG_ARM_LPAE'],
+                'arm64': ['CONFIG_ARM64', 'CONFIG_ARM64_4K_PAGES', 'CONFIG_ARM64_VA_BITS_48'],
+                'x86': ['CONFIG_X86', 'CONFIG_X86_32'],
+                'x86_64': ['CONFIG_X86', 'CONFIG_X86_64', 'CONFIG_64BIT'],
+                'mips': ['CONFIG_MIPS', 'CONFIG_MIPS32_R1'],
+                'powerpc': ['CONFIG_PPC', 'CONFIG_POWERPC'],
+                'riscv': ['CONFIG_RISCV'],
+                's390': ['CONFIG_S390'],
+                'sparc': ['CONFIG_SPARC'],
+                'sparc64': ['CONFIG_SPARC64', '64BIT']
             }
             
-            # Track progress
-            total_vulnerabilities = len(vulnerabilities_to_process)
-            completed_count = 0
-            
-            # Collect results as they complete
-            for future in as_completed(future_to_cve):
-                original_cve_id = future_to_cve[future]
-                completed_count += 1
-                progress_percentage = (completed_count * 100) // total_vulnerabilities
-                
-                try:
-                    cve_id, analysis = future.result(timeout=300)  # 5 minute timeout per CVE
-                    if analysis is not None:
-                        results[cve_id] = analysis
-                        
-                        if self.verbose:
-                            print(f"[{completed_count}/{total_vulnerabilities}] ({progress_percentage}%) Completed CVE {cve_id}: {analysis.state.value}")
-                        else:
-                            status_emoji = "✅" if analysis.state == VulnerabilityState.NOT_AFFECTED else "⚠️"
-                            print(f"[{completed_count}/{total_vulnerabilities}] {status_emoji} CVE {cve_id}: {analysis.state.value}")
-                    else:
-                        # CVE was skipped due to patch checking failure
-                        if self.verbose:
-                            print(f"[{completed_count}/{total_vulnerabilities}] ({progress_percentage}%) Skipped CVE {cve_id}: patch checking failed")
-                        else:
-                            print(f"[{completed_count}/{total_vulnerabilities}] ⏩ CVE {cve_id}: skipped")
-                        
-                except Exception as e:
-                    print(f"[{completed_count}/{total_vulnerabilities}] ❌ Error processing CVE {original_cve_id}: {e}")
-                    results[original_cve_id] = VulnerabilityAnalysis(
-                        state=VulnerabilityState.UNDER_INVESTIGATION,
-                        detail=f"Processing timeout or error: {str(e)}",
-                        timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-                    )
+            if self.arch in arch_specific_mappings:
+                arch_configs.update(arch_specific_mappings[self.arch])
         
-        return results
-
-    @timed_method
-    def update_analysis_state(self, vex_data: Dict, kernel_config: List[str], kernel_source_path: str, 
-                            reanalyse: bool = False, cve_id: Optional[str] = None) -> Dict:
-        """Update analysis state for vulnerabilities in VEX data with parallel processing.
-        
-        Args:
-            vex_data: VEX data dictionary
-            kernel_config: List of enabled kernel configuration options
-            kernel_source_path: Path to kernel source directory
-            reanalyse: Whether to re-analyze all vulnerabilities or skip existing analyses
-            cve_id: Specific CVE ID to process (if provided)
-            
-        Returns:
-            Updated VEX data dictionary with enhanced analysis information
-        """
-        print("Updating analysis state for vulnerabilities...")
-        
-        vulnerabilities = vex_data.get('vulnerabilities', [])
-        total_vulnerabilities = len(vulnerabilities)
-        processed_count = 0
-        skipped_count = 0
-        error_count = 0
-        
-        print(f"Found {total_vulnerabilities} vulnerabilities to analyze...")
-        
-        # Filter vulnerabilities to process
-        vulnerabilities_to_process = []
-        indices_to_process = []
-        
-        for i, vulnerability in enumerate(vulnerabilities):
-            vuln_id = vulnerability.get('id', 'Unknown')
-            
-            if cve_id and cve_id != vuln_id:
-                continue
-            
-            if not reanalyse and 'analysis' in vulnerability:
-                if self.verbose:
-                    print(f"Skipping CVE {vuln_id} as it already has an analysis.")
-                skipped_count += 1
-                continue
-            
-            vulnerabilities_to_process.append(vulnerability)
-            indices_to_process.append(i)
-        
-        if not vulnerabilities_to_process:
-            print("No vulnerabilities to process.")
-            return vex_data
-        
-        print(f"Will process {len(vulnerabilities_to_process)} vulnerabilities (skipping {skipped_count} already analyzed)")
-        
-        # Process vulnerabilities sequentially to prevent API rate limiting (parallel only for very large batches)
-        if len(vulnerabilities_to_process) > 10 and not self.verbose:
-            print(f"Processing {len(vulnerabilities_to_process)} vulnerabilities in parallel...")
-            try:
-                parallel_results = self._batch_process_vulnerabilities(
-                    vulnerabilities_to_process, kernel_config, kernel_source_path, reanalyse, cve_id
-                )
-                
-                # Apply results to original vulnerabilities list
-                for original_index, vulnerability in zip(indices_to_process, vulnerabilities_to_process):
-                    vuln_id = vulnerability.get('id', 'Unknown')
-                    if vuln_id in parallel_results:
-                        vulnerabilities[original_index]['analysis'] = parallel_results[vuln_id].to_dict()
-                        processed_count += 1
-                    
-            except Exception as e:
-                print(f"Parallel processing failed, falling back to sequential: {e}")
-                # Fall back to sequential processing
-                total_fallback = len(vulnerabilities_to_process)
-                for idx, (vulnerability, original_index) in enumerate(zip(vulnerabilities_to_process, indices_to_process), 1):
-                    vuln_id = vulnerability.get('id', 'Unknown')
-                    progress_percentage = (idx * 100) // total_fallback
-                    print(f"[{idx}/{total_fallback}] ({progress_percentage}%) Fallback processing CVE {vuln_id}")
-                    
-                    try:
-                        analysis = self.check_kernel_config(vulnerability, kernel_config, kernel_source_path)
-                        if analysis is not None:
-                            vulnerability['analysis'] = analysis.to_dict()
-                            processed_count += 1
-                            
-                            status_emoji = "✅" if analysis.state == VulnerabilityState.NOT_AFFECTED else "⚠️"
-                            print(f"{status_emoji} CVE {vuln_id}: {analysis.state.value}")
-                        else:
-                            # CVE was skipped due to patch checking failure
-                            skipped_count += 1
-                            print(f"⏩ CVE {vuln_id}: skipped")
-                    except Exception as inner_e:
-                        error_count += 1
-                        print(f"❌ Error processing CVE {vuln_id}: {inner_e}")
-                        vulnerability['analysis'] = VulnerabilityAnalysis(
-                            state=VulnerabilityState.UNDER_INVESTIGATION,
-                            detail=f"Processing error: {str(inner_e)}",
-                            timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-                        ).to_dict()
-        else:
-            # Sequential processing for small numbers, single CVE, or verbose mode
-            total_to_process = len(vulnerabilities_to_process)
-            processing_mode = "verbose mode" if self.verbose else f"small batch ({total_to_process} CVEs)"
-            print(f"Using sequential processing for {processing_mode}")
-            
-            for idx, vulnerability in enumerate(vulnerabilities_to_process, 1):
-                vuln_id = vulnerability.get('id', 'Unknown')
-                progress_percentage = (idx * 100) // total_to_process
-                print(f"[{idx}/{total_to_process}] ({progress_percentage}%) Checking CVE {vuln_id}")
-                
-                try:
-                    analysis = self.check_kernel_config(vulnerability, kernel_config, kernel_source_path)
-                    if analysis is not None:
-                        vulnerability['analysis'] = analysis.to_dict()
-                        processed_count += 1
-                        
-                        if self.verbose:
-                            print(f"Analysis completed for CVE {vuln_id}: {analysis.state.value}")
-                        else:
-                            status_emoji = "✅" if analysis.state == VulnerabilityState.NOT_AFFECTED else "⚠️"
-                            print(f"{status_emoji} CVE {vuln_id}: {analysis.state.value}")
-                    else:
-                        # CVE was skipped due to patch checking failure
-                        skipped_count += 1
-                        if self.verbose:
-                            print(f"Skipped CVE {vuln_id}: patch checking failed")
-                        else:
-                            print(f"⏩ CVE {vuln_id}: skipped")
-                        
-                except Exception as e:
-                    error_count += 1
-                    print(f"Error processing CVE {vuln_id}: {e}")
-                    if self.verbose:
-                        import traceback
-                        traceback.print_exc()
-                    
-                    vulnerability['analysis'] = VulnerabilityAnalysis(
-                        state=VulnerabilityState.UNDER_INVESTIGATION,
-                        detail=f"Processing error: {str(e)}",
-                        timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-                    ).to_dict()
-        
-        # Add processing summary
-        print(f"\nProcessing Summary:")
-        print(f"  Processed: {processed_count}")
-        print(f"  Skipped: {skipped_count}")
-        print(f"  Errors: {error_count}")
-        print(f"  Total: {len(vulnerabilities)}")
-        
-        # Add metadata to VEX data
-        if 'metadata' not in vex_data:
-            vex_data['metadata'] = {}
-        
-        vex_data['metadata'].update({
-            'last_analysis': time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            'processed_count': processed_count,
-            'error_count': error_count,
-            'tool_version': '2.0',
-            'analysis_method': 'kernel_config_analysis'
-        })
-        
-        return vex_data
-
-    @timed_method
-    def save_vex_file(vex_data: Dict, file_path: str) -> None:
-        """Save updated VEX data to a new file.
-        
-        Args:
-            vex_data: VEX data dictionary to save
-            file_path: Original file path (new file will have .new extension)
-        """
-        new_file_path = f"{file_path}.new"
-        print(f"Saving updated VEX file to {new_file_path}...")
-        with open(new_file_path, 'w') as file:
-            json.dump(vex_data, file, indent=4)
-        print(f"Updated VEX file saved to {new_file_path}")
-
-    def generate_vulnerability_report(self, vex_data: Dict) -> Dict:
-        """Generate a comprehensive vulnerability analysis report.
-        
-        Args:
-            vex_data: VEX data dictionary with analysis results
-            
-        Returns:
-            Dictionary containing vulnerability report statistics
-        """
-        vulnerabilities = vex_data.get('vulnerabilities', [])
-        
-        
-        report = {
-            'total_vulnerabilities': len(vulnerabilities),
-            'analyzed_vulnerabilities': 0,
-            'not_affected': 0,
-            'affected': 0,
-            'under_investigation': 0,
-            'severity_breakdown': {},
-            'justification_breakdown': {},
-            'high_priority_cves': [],
-            'configuration_issues': []
-        }
-        
-        for vuln in vulnerabilities:
-            analysis = vuln.get('analysis', {})
-            if not analysis:
-                continue
-                
-            report['analyzed_vulnerabilities'] += 1
-            state = analysis.get('state', 'unknown')
-            
-            # Count by state
-            if state == 'not_affected':
-                report['not_affected'] += 1
-            elif state == 'affected':
-                report['affected'] += 1
-            elif state == 'under_investigation':
-                report['under_investigation'] += 1
-            
-            # Severity breakdown
-            severity = vuln.get('severity', 'unknown')
-            report['severity_breakdown'][severity] = report['severity_breakdown'].get(severity, 0) + 1
-            
-            # Justification breakdown
-            justification = analysis.get('justification', 'none')
-            report['justification_breakdown'][justification] = report['justification_breakdown'].get(justification, 0) + 1
-            
-            # High priority CVEs (affected with high/critical severity)
-            if state == 'affected' and severity in ['HIGH', 'CRITICAL']:
-                report['high_priority_cves'].append({
-                    'cve_id': vuln.get('id'),
-                    'severity': severity,
-                    'detail': analysis.get('detail', '')
-                })
-            
-            # Configuration issues
-            if analysis.get('justification') == 'requires_configuration':
-                report['configuration_issues'].append({
-                    'cve_id': vuln.get('id'),
-                    'detail': analysis.get('detail', '')
-                })
-        
-        return report
+        return arch_configs
     
-    def validate_vex_data(self, vex_data: Dict) -> List[str]:
-        """Validate VEX data structure and return list of issues.
-        
-        Args:
-            vex_data: VEX data dictionary to validate
-            
-        Returns:
-            List of validation issues found
+    def is_arch_compatible_cve(self, cve: Dict, source_file_path: Optional[str] = None) -> bool:
         """
-        issues = []
-        
-        if 'vulnerabilities' not in vex_data:
-            issues.append("Missing 'vulnerabilities' field in VEX data")
-            return issues
-        
-        vulnerabilities = vex_data['vulnerabilities']
-        if not isinstance(vulnerabilities, list):
-            issues.append("'vulnerabilities' field must be a list")
-            return issues
-        
-        for i, vuln in enumerate(vulnerabilities):
-            if not isinstance(vuln, dict):
-                issues.append(f"Vulnerability {i}: must be a dictionary")
-                continue
-            
-            if 'id' not in vuln:
-                issues.append(f"Vulnerability {i}: missing 'id' field")
-            elif not vuln['id'].startswith('CVE-'):
-                issues.append(f"Vulnerability {i}: ID should start with 'CVE-'")
-            
-            # Validate analysis if present
-            if 'analysis' in vuln:
-                analysis = vuln['analysis']
-                if not isinstance(analysis, dict):
-                    issues.append(f"Vulnerability {i}: 'analysis' must be a dictionary")
-                    continue
-                
-                if 'state' not in analysis:
-                    issues.append(f"Vulnerability {i}: analysis missing 'state' field")
-                elif analysis['state'] not in [s.value for s in VulnerabilityState]:
-                    issues.append(f"Vulnerability {i}: invalid analysis state '{analysis['state']}'")
-                
-                if 'justification' in analysis:
-                    justification = analysis['justification']
-                    if justification not in [j.value for j in Justification]:
-                        issues.append(f"Vulnerability {i}: invalid justification '{justification}'")
-        
-        return issues
-
-    def print_vulnerability_summary(self, report: Dict) -> None:
-        """Print a formatted vulnerability analysis summary.
-        
-        Args:
-            report: Vulnerability report dictionary from generate_vulnerability_report
+        Check if a CVE is compatible with the detected architecture.
+        Returns True if architecture is compatible or cannot be determined.
         """
-        print("\n" + "="*60)
-        print("VULNERABILITY ANALYSIS SUMMARY")
-        print("="*60)
-        
-        print(f"Total Vulnerabilities: {report['total_vulnerabilities']}")
-        print(f"Analyzed: {report['analyzed_vulnerabilities']}")
-        print(f"Not Affected: {report['not_affected']}")
-        print(f"Affected: {report['affected']}")
-        print(f"Under Investigation: {report['under_investigation']}")
-        
-        if report['severity_breakdown']:
-            print(f"\nSeverity Breakdown:")
-            for severity, count in sorted(report['severity_breakdown'].items()):
-                print(f"  {severity}: {count}")
-        
-        if report['justification_breakdown']:
-            print(f"\nJustification Breakdown:")
-            for justification, count in sorted(report['justification_breakdown'].items()):
-                print(f"  {justification}: {count}")
-        
-        if report['high_priority_cves']:
-            print(f"\nHigh Priority CVEs ({len(report['high_priority_cves'])}):")
-            for cve in report['high_priority_cves'][:5]:  # Show first 5
-                print(f"  ⚠️  {cve['cve_id']} ({cve['severity']})")
-        
-        if report['configuration_issues']:
-            print(f"\nConfiguration Issues ({len(report['configuration_issues'])}):")
-            for issue in report['configuration_issues'][:3]:  # Show first 3
-                print(f"  🔧 {issue['cve_id']}: {issue['detail'][:60]}...")
-        
-        print("="*60)
-
-    def test_webdriver_functionality(self) -> bool:
-        """Test WebDriver functionality with a simple page load.
-        
-        Returns:
-            True if WebDriver works correctly, False otherwise
-        """
-        driver = None
-        try:
-            if self.verbose:
-                print("Testing WebDriver functionality...")
-            
-            # Validate WebDriver path before attempting to use it
-            if not self.edge_driver_path:
-                if self.verbose:
-                    print("Edge WebDriver path is not set")
-                return False
-            
-            if not os.path.isfile(self.edge_driver_path):
-                if self.verbose:
-                    print(f"Edge WebDriver not found at: {self.edge_driver_path}")
-                return False
-            
-            service = Service(self.edge_driver_path)
-            options = webdriver.EdgeOptions()
-            options.add_argument('--headless')
-            options.add_argument('--no-sandbox')
-            options.add_argument('--disable-dev-shm-usage')
-            
-            driver = webdriver.Edge(service=service, options=options)
-            driver.set_page_load_timeout(10)
-            
-            # Test with a simple, reliable page
-            driver.get("data:text/html,<html><body><h1>WebDriver Test</h1></body></html>")
-            
-            title = driver.title
-            if self.verbose:
-                print(f"WebDriver test successful. Page title: '{title}'")
-            
+        if not self.arch:
+            # If no architecture detected, assume compatible
             return True
             
-        except SessionNotCreatedException as e:
-            print(f"WebDriver session creation failed: {e}")
-            print("Troubleshooting tips:")
-            print("  1. Ensure Microsoft Edge browser is installed")
-            print("  2. Download the correct WebDriver version from:")
-            print("     https://developer.microsoft.com/en-us/microsoft-edge/tools/webdriver/")
-            print("  3. Ensure WebDriver version matches your Edge browser version")
-            return False
-        except Exception as e:
-            print(f"WebDriver test failed: {e}")
-            return False
-        finally:
-            if driver:
-                try:
-                    driver.quit()
-                except Exception:
-                    pass  # Ignore cleanup errors
-
-    def _compile_config_patterns(self) -> List:
-        """Compile regex patterns for better performance."""
-        return [
-            # Pattern for extracting source files from patches
-            re.compile(r'diff --git a/(.*)\.c b/'),
-            # Pattern for #ifdef CONFIG_* 
-            re.compile(r'#ifn?def\s+(CONFIG_[A-Z0-9_]+)'),
-            # Pattern for #if defined(CONFIG_*)
-            re.compile(r'#if.*defined\s*\(\s*(CONFIG_[A-Z0-9_]+)\s*\)'),
-            # Pattern for IS_ENABLED(CONFIG_*)
-            re.compile(r'IS_ENABLED\s*\(\s*(CONFIG_[A-Z0-9_]+)\s*\)'),
-            # Pattern for obj-$(CONFIG_*) assignments
-            re.compile(r'obj-\$\((CONFIG_[A-Z0-9_]+)\)\s*[+:]?='),
-            # Pattern for CONFIG references in general
-            re.compile(r'CONFIG_[A-Z0-9_]+')
-        ]
-
-    def _compile_patch_patterns(self) -> List:
-        """Compile patch-specific regex patterns."""
-        return [
-            # Diff pattern for source files
-            re.compile(r'diff --git a/(.*)\.c b/'),
-            # ifdef pattern
-            re.compile(r'#ifn?def\s+(CONFIG_[A-Z0-9_]+)'),
-            # if defined pattern
-            re.compile(r'#if.*defined\s*\(\s*(CONFIG_[A-Z0-9_]+)\s*\)'),
-            # IS_ENABLED pattern
-            re.compile(r'IS_ENABLED\s*\(\s*(CONFIG_[A-Z0-9_]+)\s*\)')
-        ]
-
-    def _compile_advanced_config_patterns(self) -> Dict[str, List]:
-        """Compile advanced regex patterns for ultra-fast config detection."""
-        return {
-            'primary': [
-                # Direct obj-$(CONFIG_*) patterns (most common)
-                re.compile(r'obj-\$\((CONFIG_[A-Z0-9_]+)\)\s*[+:]?=\s*.*?\.o\b', re.IGNORECASE),
-                # Composite object patterns
-                re.compile(r'([a-zA-Z0-9_-]+)-objs-\$\((CONFIG_[A-Z0-9_]+)\)', re.IGNORECASE),
-                # Direct CONFIG assignment patterns
-                re.compile(r'^(CONFIG_[A-Z0-9_]+)\s*[=:]', re.MULTILINE),
-            ],
-            'conditional': [
-                # ifdef/ifndef patterns
-                re.compile(r'ifdef\s+(CONFIG_[A-Z0-9_]+)', re.IGNORECASE),
-                re.compile(r'ifndef\s+(CONFIG_[A-Z0-9_]+)', re.IGNORECASE),
-                # ifeq/ifneq patterns
-                re.compile(r'ifeq\s*\(\s*\$\((CONFIG_[A-Z0-9_]+)\)', re.IGNORECASE),
-                re.compile(r'ifneq\s*\(\s*\$\((CONFIG_[A-Z0-9_]+)\)', re.IGNORECASE),
-            ],
-            'source_hints': [
-                # C source file preprocessor patterns
-                re.compile(r'#ifn?def\s+(CONFIG_[A-Z0-9_]+)', re.IGNORECASE),
-                re.compile(r'#if\s+defined\s*\(\s*(CONFIG_[A-Z0-9_]+)\s*\)', re.IGNORECASE),
-                re.compile(r'IS_ENABLED\s*\(\s*(CONFIG_[A-Z0-9_]+)\s*\)', re.IGNORECASE),
-                re.compile(r'IS_BUILTIN\s*\(\s*(CONFIG_[A-Z0-9_]+)\s*\)', re.IGNORECASE),
-            ]
-        }
-
-    def _compile_optimized_source_patterns(self) -> Dict[str, re.Pattern]:
-        """Compile optimized patterns for source file analysis."""
-        return {
-            'c_files': re.compile(r'\.c\s*$', re.IGNORECASE),
-            'header_files': re.compile(r'\.h\s*$', re.IGNORECASE),
-            'makefile_names': re.compile(r'^(Makefile|Kbuild|makefile|GNUmakefile)$', re.IGNORECASE),
-            'config_reference': re.compile(r'CONFIG_[A-Z0-9_]+'),
-            'diff_source': re.compile(r'diff --git a/(.*?\.c)\s+b/', re.IGNORECASE),
-        }
-
-    def _get_directory_priority(self, directory_path: str, source_file_path: str) -> int:
-        """Calculate search priority for a directory based on relevance to source file.
+        # Check source file path for architecture-specific paths
+        if source_file_path:
+            # Extract architecture from path
+            path_arch, _ = self.extract_arch_info(source_file_path)
+            if path_arch and path_arch != self.arch:
+                if self.verbose:
+                    print(f"Architecture mismatch: detected {self.arch}, CVE affects {path_arch}")
+                return False
         
-        Higher numbers = higher priority (searched first)
-        """
-        if directory_path in self._directory_priority_cache:
-            return self._directory_priority_cache[directory_path]
+        # Check CVE description for architecture mentions
+        description = cve.get('description', '').lower()
         
-        priority = 0
-        dir_name = os.path.basename(directory_path)
-        source_dir = os.path.dirname(source_file_path)
-        source_base = os.path.splitext(os.path.basename(source_file_path))[0]
-        
-        # Highest priority: exact directory match
-        if directory_path == source_dir:
-            priority = 1000
-        # High priority: parent directory
-        elif directory_path == os.path.dirname(source_dir):
-            priority = 800
-        # Medium-high priority: directory name matches source base name
-        elif dir_name == source_base or source_base in dir_name:
-            priority = 600
-        # Medium priority: common kernel subsystem directories
-        elif any(subsys in directory_path for subsys in [
-            'drivers/net', 'drivers/usb', 'drivers/pci', 'drivers/scsi',
-            'fs/', 'net/', 'sound/', 'crypto/', 'security/'
-        ]):
-            priority = 400
-        # Lower priority: architecture-specific (but not ARM)
-        elif 'arch/' in directory_path and 'arm' not in directory_path.lower():
-            priority = 100
-        # Lowest priority: documentation, tools, etc.
-        elif any(skip in directory_path for skip in [
-            'Documentation', 'tools', 'scripts', '.git'
-        ]):
-            priority = 10
-        else:
-            priority = 200  # Default priority
-        
-        # Cache the result
-        self._directory_priority_cache[directory_path] = priority
-        return priority
-
-    def _find_makefiles_fast(self, kernel_source_path: str, source_file_path: str) -> List[str]:
-        """Ultra-fast makefile discovery using smart search ordering."""
-        cache_key = f"makefiles:{source_file_path}"
-        if cache_key in self._makefile_location_cache:
-            self._cache_hits['makefile'] += 1
-            return self._makefile_location_cache[cache_key]
-        
-        self._cache_misses['makefile'] += 1
-        makefiles = []
-        
-        # Priority-ordered search starting from source file directory
-        source_dir = os.path.dirname(source_file_path)
-        search_candidates = []
-        
-        # Build priority-ordered candidate directories
-        current_dir = source_dir
-        while current_dir and current_dir != kernel_source_path:
-            search_candidates.append((current_dir, self._get_directory_priority(current_dir, source_file_path)))
-            current_dir = os.path.dirname(current_dir)
-        
-        # Add kernel root with medium priority
-        search_candidates.append((kernel_source_path, 300))
-        
-        # Sort by priority (highest first)
-        search_candidates.sort(key=lambda x: x[1], reverse=True)
-        
-        # Search in priority order
-        makefile_names = ['Makefile', 'Kbuild']
-        for directory, _ in search_candidates[:20]:  # Limit to top 20 candidates
-            for makefile_name in makefile_names:
-                makefile_path = os.path.join(directory, makefile_name)
-                if os.path.exists(makefile_path):
-                    makefiles.append(makefile_path)
-                    if len(makefiles) >= 10:  # Limit total makefiles for performance
-                        break
-            if len(makefiles) >= 10:
-                break
-        
-        # Cache the result
-        self._makefile_location_cache[cache_key] = makefiles
-        
-        # Limit cache size
-        if len(self._makefile_location_cache) > 500:
-            # Remove oldest 100 entries
-            oldest_keys = list(self._makefile_location_cache.keys())[:100]
-            for key in oldest_keys:
-                del self._makefile_location_cache[key]
-        
-        return makefiles
-
-    def _extract_configs_ultra_fast(self, content: str, source_file_name: str, 
-                                   makefile_vars: Dict[str, str]) -> Set[str]:
-        """Ultra-fast configuration extraction using optimized patterns."""
-        config_options = set()
-        
-        # Quick exit if no CONFIG references
-        if 'CONFIG_' not in content:
-            return config_options
-        
-        base_name = os.path.splitext(source_file_name)[0]
-        expanded_content = self._expand_makefile_variables(content, makefile_vars)
-        
-        # Use precompiled advanced patterns
-        patterns = self._advanced_config_patterns
-        
-        # Primary patterns (highest confidence)
-        for pattern in patterns['primary']:
-            for match in pattern.finditer(expanded_content):
-                if any(target in match.group(0) for target in [base_name, source_file_name]):
-                    for group_idx in range(1, pattern.groups + 1 if pattern.groups else 1):
-                        group_val = match.group(group_idx)
-                        if group_val and group_val.startswith('CONFIG_'):
-                            config_options.add(group_val)
-        
-        # Conditional patterns (medium confidence)
-        if base_name in expanded_content or source_file_name in expanded_content:
-            for pattern in patterns['conditional']:
-                for match in pattern.finditer(expanded_content):
-                    config_options.add(match.group(1))
-        
-        return config_options
-
-    def _analyze_source_file_ultra_fast(self, source_file_path: str) -> Set[str]:
-        """Ultra-fast source file analysis with aggressive caching."""
-        # Check cache first
-        if source_file_path in self._source_analysis_cache:
-            self._cache_hits['source'] += 1
-            return self._source_analysis_cache[source_file_path]
-        
-        self._cache_misses['source'] += 1
-        config_options = set()
-        
-        try:
-            # Use cached file content
-            content = self._get_cached_file_content(source_file_path)
-            if not content:
-                self._source_analysis_cache[source_file_path] = config_options
-                return config_options
-            
-            # Quick check for CONFIG references
-            if 'CONFIG_' not in content:
-                self._source_analysis_cache[source_file_path] = config_options
-                return config_options
-            
-            # Use optimized patterns for source analysis
-            source_patterns = self._advanced_config_patterns['source_hints']
-            
-            for pattern in source_patterns:
-                for match in pattern.finditer(content):
-                    config_options.add(match.group(1))
-            
-            if config_options and self.verbose:
-                print(f"Ultra-fast source analysis found {len(config_options)} configs in {source_file_path}")
-        
-        except Exception as e:
-            if self.verbose:
-                print(f"Error in ultra-fast source analysis for {source_file_path}: {e}")
-        
-        # Cache the result
-        self._source_analysis_cache[source_file_path] = config_options
-
-        # Limit cache size for memory management
-        if len(self._source_analysis_cache) > self.SOURCE_ANALYSIS_CACHE_SIZE:
-            # Remove oldest 200 entries
-            oldest_keys = list(self._source_analysis_cache.keys())[:200]
-            for key in oldest_keys:
-                del self._source_analysis_cache[key]
-        
-        return config_options
-
-    def print_performance_stats(self):
-        """Print detailed performance statistics."""
-        print("\n=== Performance Statistics ===")
-        
-        # Cache statistics
-        print("\nCache Performance:")
-        for cache_name in ['makefile', 'config', 'source', 'path']:
-            hits = self._cache_hits.get(cache_name, 0)
-            misses = self._cache_misses.get(cache_name, 0)
-            total = hits + misses
-            hit_rate = (hits / total * 100) if total > 0 else 0
-            print(f"  {cache_name}: {hits} hits, {misses} misses ({hit_rate:.1f}% hit rate)")
-        
-        # Cache sizes
-        print("\nCache Sizes:")
-        cache_info = {
-            'makefile': len(self._makefile_cache),
-            'config': len(self._config_cache),
-            'kconfig': len(self._kconfig_cache),
-            'path': len(self._path_cache),
-            'source_analysis': len(self._source_analysis_cache),
-            'directory_priority': len(self._directory_priority_cache),
-            'makefile_location': len(self._makefile_location_cache),
-            'file_content': len(self._file_content_cache)
+        # Architecture keywords that would make CVE incompatible
+        incompatible_arch_keywords = {
+            'arm': ['x86', 'amd64', 'intel', 'mips', 'powerpc', 'sparc', 's390'],
+            'arm64': ['x86', 'amd64', 'intel', 'mips', 'powerpc', 'sparc', 's390', 'arm32'],
+            'x86': ['arm', 'aarch64', 'mips', 'powerpc', 'sparc', 's390'],
+            'x86_64': ['arm', 'aarch64', 'mips', 'powerpc', 'sparc', 's390', 'i386'],
+            'mips': ['arm', 'aarch64', 'x86', 'amd64', 'intel', 'powerpc', 'sparc', 's390'],
+            'powerpc': ['arm', 'aarch64', 'x86', 'amd64', 'intel', 'mips', 'sparc', 's390'],
+            'riscv': ['arm', 'aarch64', 'x86', 'amd64', 'intel', 'mips', 'powerpc', 'sparc', 's390'],
+            's390': ['arm', 'aarch64', 'x86', 'amd64', 'intel', 'mips', 'powerpc', 'sparc'],
+            'sparc': ['arm', 'aarch64', 'x86', 'amd64', 'intel', 'mips', 'powerpc', 's390']
         }
         
-        for cache_name, size in cache_info.items():
-            print(f"  {cache_name}: {size} entries")
+        if self.arch in incompatible_arch_keywords:
+            for incompatible_keyword in incompatible_arch_keywords[self.arch]:
+                if incompatible_keyword in description:
+                    if self.verbose:
+                        print(f"CVE description mentions incompatible architecture: {incompatible_keyword}")
+                    return False
         
-        total_cached_entries = sum(cache_info.values())
-        print(f"\nTotal cached entries: {total_cached_entries}")
+        return True
+        
 
-
-@timed_method
 def main():
-    """Main entry point with performance tracking."""
-    perf_tracker.start_timer('total_execution')
+    """Main entry point for the VEX Kernel Checker."""
     
     parser = argparse.ArgumentParser(
         description='VEX Kernel Checker - Analyze CVE vulnerabilities against kernel configurations\n\n'
@@ -2918,11 +2524,9 @@ def main():
     parser.add_argument('--clear-cache', action='store_true', help='Clear all internal caches before starting analysis')
     parser.add_argument('--performance-stats', action='store_true', help='Show detailed performance statistics')
     parser.add_argument('--analyze-all-cves', action='store_true', help='Analyze all CVEs regardless of kernel relevance (default: only analyze kernel-related CVEs)')
+    parser.add_argument('--detailed-timing', action='store_true', help='Show detailed method timing (verbose performance output)')
     
     args = parser.parse_args()
-    
-    # No validation needed - patch checking will be automatically enabled if both api_key and edge_driver are provided
-    # and automatically disabled otherwise. The --config-only flag explicitly disables patch checking.
     
     # Validate input files
     if not os.path.exists(args.vex_file):
@@ -2937,80 +2541,142 @@ def main():
         print(f"Error: Kernel source directory not found: {args.kernel_source}")
         return 1
     
+    # Set output file
+    output_file = args.output if args.output else args.vex_file
+    
     try:
         # Load VEX data
         perf_tracker.start_timer('load_vex_data')
-        with open(args.vex_file, 'r') as f:
-            vex_data = json.load(f)
+        print(f"Loading VEX data from {args.vex_file}...")
+        vex_data = VexKernelChecker.load_vex_file(args.vex_file)
         perf_tracker.end_timer('load_vex_data')
         
         # Load kernel config
         perf_tracker.start_timer('load_kernel_config')
-        with open(args.kernel_config, 'r') as f:
-            kernel_config_lines = f.readlines()
-        
-        # Extract enabled config options
-        kernel_config = []
-        for line in kernel_config_lines:
-            line = line.strip()
-            if line and not line.startswith('#') and '=' in line:
-                config_name = line.split('=')[0]
-                if line.endswith('=y') or line.endswith('=m'):
-                    kernel_config.append(config_name)
+        print(f"Loading kernel configuration from {args.kernel_config}...")
+        kernel_config = VexKernelChecker.load_kernel_config(args.kernel_config)
         perf_tracker.end_timer('load_kernel_config')
         
-        print(f"Loaded {len(kernel_config)} enabled kernel config options")
+        print(f"Loaded {len(kernel_config)} configuration options")
         
-        # Initialize checker with performance tracking
-        perf_tracker.start_timer('initialize_checker')
+        # Extract architecture from kernel configuration
+        perf_tracker.start_timer('extract_architecture')
+        arch, arch_config = VexKernelChecker.extract_arch_from_config(kernel_config)
+        perf_tracker.end_timer('extract_architecture')
+        
+        if arch and arch_config:
+            print(f"Detected architecture: {arch} ({arch_config})")
+        else:
+            print("Warning: Could not detect architecture from kernel configuration")
+            print("This may affect the accuracy of vulnerability analysis")
+        
+        
+        # Initialize checker
+        # Only disable patch checking if explicitly requested with --config-only
+        # NVD API doesn't require an API key (API key just provides higher rate limits)
+        disable_patch_checking = args.config_only
+        
+        print(f"Initializing VEX Kernel Checker...")
         checker = VexKernelChecker(
-            verbose=args.verbose, 
+            verbose=args.verbose,
             api_key=args.api_key,
             edge_driver_path=args.edge_driver,
-            disable_patch_checking=args.config_only,
-            analyze_all_cves=args.analyze_all_cves
+            disable_patch_checking=disable_patch_checking,
+            analyze_all_cves=args.analyze_all_cves,
+            arch=arch,
+            arch_config=arch_config,
+            detailed_timing=args.detailed_timing
         )
-        perf_tracker.end_timer('initialize_checker')
         
-        # Clear caches if requested
+        # Clear cache if requested
         if args.clear_cache:
-            print("Clearing all caches...")
+            print("Clearing caches...")
             checker.clear_all_caches()
         
-        # Update analysis state
-        perf_tracker.start_timer('vulnerability_analysis')
+        # Validate VEX data
+        validation_issues = checker.validate_vex_data(vex_data)
+        if validation_issues:
+            print(f"VEX data validation warnings:")
+            for issue in validation_issues[:3]:
+                print(f"  ⚠️  {issue}")
+            if len(validation_issues) > 3:
+                print(f"  ... and {len(validation_issues) - 3} more issues")
+            print()
+        
+        # Perform analysis
+        print("\n" + "="*60)
+        print("🚀 STARTING VULNERABILITY ANALYSIS")
+        print("="*60)
+        
+        # Show analysis overview
+        total_vulns = len(vex_data.get('vulnerabilities', []))
+        print(f"📋 Analysis Overview:")
+        print(f"   Total vulnerabilities: {total_vulns}")
+        print(f"   Kernel configuration: {len(kernel_config)} options")
+        print(f"   Architecture: {arch if arch else 'Unknown'}")
+        print(f"   Patch checking: {'Enabled' if not disable_patch_checking else 'Disabled'}")
+        print(f"   API key: {'Provided' if args.api_key else 'Not provided (rate limited)'}")
+        print()
+        
+        start_time = time.time()
+        
         updated_vex_data = checker.update_analysis_state(
-            vex_data, kernel_config, args.kernel_source, 
-            reanalyse=args.reanalyse, cve_id=args.cve_id
+            vex_data=vex_data,
+            kernel_config=kernel_config,
+            kernel_source_path=args.kernel_source,
+            reanalyse=args.reanalyse,
+            cve_id=args.cve_id
         )
-        perf_tracker.end_timer('vulnerability_analysis')
+        
+        analysis_time = time.time() - start_time
+        print("\n" + "="*60)
+        print("✅ ANALYSIS COMPLETED")
+        print("="*60)
+        print(f"⏱️  Total analysis time: {analysis_time:.2f} seconds")
+        print(f"📊 Performance: {total_vulns / analysis_time:.1f} CVEs/second" if analysis_time > 0 else "")
+        print()
+        
+        # Generate report
+        report = checker.generate_vulnerability_report(updated_vex_data)
+        checker.print_vulnerability_summary(report)
         
         # Save results
-        perf_tracker.start_timer('save_results')
-        output_file = args.output or args.vex_file
-        with open(output_file, 'w') as f:
-            json.dump(updated_vex_data, f, indent=2)
-        perf_tracker.end_timer('save_results')
+        print(f"\n💾 Saving results to {output_file}...")
+        VexKernelChecker.save_vex_file(updated_vex_data, output_file)
+        print(f"✅ Results saved to {output_file}")
         
-        print(f"\nUpdated VEX data saved to: {output_file}")
-        
-        # Show performance statistics
-        if args.verbose or args.performance_stats:
+        # Performance stats
+        if args.performance_stats:
             checker.print_performance_stats()
         
-        perf_tracker.end_timer('total_execution')
+        # Final summary
+        affected_count = report.get('affected', 0)
+        not_affected_count = report.get('not_affected', 0)
+        under_investigation_count = report.get('under_investigation', 0)
         
-        if args.performance_stats:
-            perf_tracker.print_summary()
+        print(f"\n🎯 Final Summary:")
+        print(f"   ✅ Not affected: {not_affected_count}")
+        print(f"   ⚠️  Affected: {affected_count}")
+        print(f"   🔍 Under investigation: {under_investigation_count}")
         
+        if affected_count > 0:
+            print(f"\n⚠️  Warning: {affected_count} vulnerabilities may affect this kernel")
+            print("   Review analysis details and consider patches or config changes")
+        
+        if under_investigation_count > 0:
+            print(f"\n🔍 Note: {under_investigation_count} vulnerabilities need manual review")
+            
         return 0
-        
+            
+    except KeyboardInterrupt:
+        print("\nAnalysis interrupted by user")
+        return 1
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error during analysis: {e}")
         if args.verbose:
             traceback.print_exc()
         return 1
 
-
 if __name__ == "__main__":
-    exit(main())
+    import sys
+    sys.exit(main())

@@ -2,7 +2,7 @@
   "metadata": {
     "analysis_method": "kernel_config_analysis",
     "error_count": 0,
-    "last_analysis": "2025-07-05T17:12:36Z",
+    "last_analysis": "2025-07-05T13:53:24Z",
     "processed_count": 1,
     "tool_version": "2.0"
   },
@@ -12,10 +12,11 @@
         "detail": "CVE not related to Linux kernel",
         "justification": "component_not_present",
         "state": "not_affected",
-        "timestamp": "2025-07-06T15:21:15Z"
+        "timestamp": "2025-07-06T11:45:41Z"
       },
-      "details": "Real Linux kernel CVE for testing",
-      "id": "CVE-2023-52340"
+      "description": "Test vulnerability for checking",
+      "id": "CVE-2023-1234",
+      "severity": "HIGH"
     }
   ]
 }

@@ -11,8 +11,9 @@
       "analysis": {
         "detail": "Unable to determine configuration requirements",
         "justification": "component_not_present",
+        "response": "can_not_fix",
         "state": "under_investigation",
-        "timestamp": "2025-07-06T17:46:47Z"
+        "timestamp": "2025-07-06T18:17:09Z"
       },
       "details": "Linux kernel IPv6 vulnerability - should be analyzed",
       "id": "CVE-2023-52340"

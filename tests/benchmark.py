@@ -13,6 +13,7 @@ import json
 import tempfile
 import shutil
 import statistics
+import traceback
 import argparse
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
@@ -25,7 +26,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 try:
     import importlib.util
     spec = importlib.util.spec_from_file_location("vex_kernel_checker", 
-                                                 Path(__file__).parent.parent / "vex-kernel-checker.py")
+                                                 Path(__file__).parent.parent / "../vex-kernel-checker.py")
+    if spec is None or spec.loader is None:
+        raise ImportError("Could not create module spec for vex_kernel_checker")
     vkc_module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(vkc_module)
     VexKernelChecker = vkc_module.VexKernelChecker
@@ -213,6 +216,9 @@ endif
     
     def create_test_configs(self):
         """Create test kernel configuration files."""
+        if self.temp_dir is None:
+            raise RuntimeError("temp_dir not initialized. Call setup_test_environment() first.")
+        
         configs = {
             "minimal.config": [
                 "CONFIG_NET=y",
@@ -249,6 +255,9 @@ endif
     
     def create_comprehensive_vex_data(self):
         """Create comprehensive VEX test data."""
+        if self.temp_dir is None:
+            raise RuntimeError("temp_dir not initialized. Call setup_test_environment() first.")
+        
         # Small dataset
         small_vex = {
             "vulnerabilities": [

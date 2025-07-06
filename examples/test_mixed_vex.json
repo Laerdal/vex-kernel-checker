@@ -1,97 +1,100 @@
 {
   "bomFormat": "CycloneDX",
-  "specVersion": "1.5",
-  "serialNumber": "urn:uuid:test-mixed-12345",
-  "version": 1,
   "metadata": {
-    "timestamp": "2025-07-05T14:00:00Z",
-    "tools": [
-      {
-        "vendor": "TEST",
-        "name": "Test VEX Generator",
-        "version": "1.0"
-      }
-    ],
+    "analysis_method": "kernel_config_analysis",
+    "error_count": 3,
     "last_analysis": "2025-07-05T17:01:24Z",
     "processed_count": 0,
-    "error_count": 3,
+    "timestamp": "2025-07-05T14:00:00Z",
     "tool_version": "2.0",
-    "analysis_method": "kernel_config_analysis"
+    "tools": [
+      {
+        "name": "Test VEX Generator",
+        "vendor": "TEST",
+        "version": "1.0"
+      }
+    ]
   },
+  "serialNumber": "urn:uuid:test-mixed-12345",
+  "specVersion": "1.5",
+  "version": 1,
   "vulnerabilities": [
     {
-      "bom-ref": "analyzed-1",
-      "id": "CVE-2023-38469",
-      "source": {
-        "name": "NVD",
-        "url": "https://nvd.nist.gov/"
+      "analysis": {
+        "detail": "Unable to determine configuration requirements",
+        "justification": "component_not_present",
+        "state": "under_investigation",
+        "timestamp": "2025-07-06T14:41:18Z"
       },
+      "bom-ref": "analyzed-1",
+      "description": "CVE with existing analysis",
+      "id": "CVE-2023-38469",
       "ratings": [
         {
-          "source": {
-            "name": "NVD",
-            "url": "https://nvd.nist.gov/"
-          },
+          "method": "CVSSv3",
           "score": 5.5,
           "severity": "medium",
-          "method": "CVSSv3"
-        }
-      ],
-      "description": "CVE with existing analysis",
-      "analysis": {
-        "state": "under_investigation",
-        "detail": "Processing error: 'VexKernelChecker' object has no attribute 'is_kernel_related_cve'",
-        "timestamp": "2025-07-05T17:01:21Z"
-      }
-    },
-    {
-      "bom-ref": "fresh-1",
-      "id": "CVE-2023-38470",
-      "source": {
-        "name": "NVD",
-        "url": "https://nvd.nist.gov/"
-      },
-      "ratings": [
-        {
           "source": {
             "name": "NVD",
             "url": "https://nvd.nist.gov/"
-          },
+          }
+        }
+      ],
+      "source": {
+        "name": "NVD",
+        "url": "https://nvd.nist.gov/"
+      }
+    },
+    {
+      "analysis": {
+        "detail": "Unable to determine configuration requirements",
+        "justification": "component_not_present",
+        "state": "under_investigation",
+        "timestamp": "2025-07-06T14:41:18Z"
+      },
+      "bom-ref": "fresh-1",
+      "description": "CVE without analysis - should be processed",
+      "id": "CVE-2023-38470",
+      "ratings": [
+        {
+          "method": "CVSSv3",
           "score": 6.1,
           "severity": "medium",
-          "method": "CVSSv3"
-        }
-      ],
-      "description": "CVE without analysis - should be processed",
-      "analysis": {
-        "state": "under_investigation",
-        "detail": "Processing error: 'VexKernelChecker' object has no attribute 'is_kernel_related_cve'",
-        "timestamp": "2025-07-05T17:01:22Z"
-      }
-    },
-    {
-      "bom-ref": "fresh-2",
-      "id": "CVE-2024-12345",
-      "source": {
-        "name": "NVD",
-        "url": "https://nvd.nist.gov/"
-      },
-      "ratings": [
-        {
           "source": {
             "name": "NVD",
             "url": "https://nvd.nist.gov/"
-          },
-          "score": 7.2,
-          "severity": "high",
-          "method": "CVSSv3"
+          }
         }
       ],
-      "description": "Another CVE without analysis - should be processed",
+      "source": {
+        "name": "NVD",
+        "url": "https://nvd.nist.gov/"
+      }
+    },
+    {
       "analysis": {
+        "detail": "Unable to determine configuration requirements",
+        "justification": "component_not_present",
         "state": "under_investigation",
-        "detail": "Processing error: 'VexKernelChecker' object has no attribute 'is_kernel_related_cve'",
-        "timestamp": "2025-07-05T17:01:24Z"
+        "timestamp": "2025-07-06T14:41:18Z"
+      },
+      "bom-ref": "fresh-2",
+      "description": "Another CVE without analysis - should be processed",
+      "id": "CVE-2024-12345",
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": 7.2,
+          "severity": "high",
+          "source": {
+            "name": "NVD",
+            "url": "https://nvd.nist.gov/"
+          }
+        }
+      ],
+      "source": {
+        "name": "NVD",
+        "url": "https://nvd.nist.gov/"
       }
     }
   ]

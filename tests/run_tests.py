@@ -121,7 +121,7 @@ def run_quick_test():
         # Try to import and instantiate the checker
         import importlib.util
         spec = importlib.util.spec_from_file_location("vex_kernel_checker", 
-                                                     Path(__file__).parent.parent / "vex-kernel-checker.py")
+                                                     Path(__file__).parent.parent / "../vex-kernel-checker.py")
         vkc_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(vkc_module)
         

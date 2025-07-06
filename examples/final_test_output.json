@@ -11,38 +11,42 @@
       "analysis": {
         "detail": "Unable to determine configuration requirements",
         "justification": "component_not_present",
+        "response": "can_not_fix",
         "state": "under_investigation",
-        "timestamp": "2025-07-06T17:46:47Z"
+        "timestamp": "2025-07-06T18:10:14Z"
       },
       "details": "Linux kernel IPv6 vulnerability - should be analyzed",
       "id": "CVE-2023-52340"
     },
     {
       "analysis": {
-        "detail": "Could not fetch CVE details",
+        "detail": "Unable to determine configuration requirements",
         "justification": "component_not_present",
+        "response": "can_not_fix",
         "state": "under_investigation",
-        "timestamp": "2025-07-06T17:46:47Z"
+        "timestamp": "2025-07-06T18:10:14Z"
       },
       "details": "Apache HTTP Server vulnerability - should be filtered out",
       "id": "CVE-2023-12345"
     },
     {
       "analysis": {
-        "detail": "Could not fetch CVE details",
+        "detail": "Unable to determine configuration requirements",
         "justification": "component_not_present",
+        "response": "can_not_fix",
         "state": "under_investigation",
-        "timestamp": "2025-07-06T17:46:49Z"
+        "timestamp": "2025-07-06T18:10:14Z"
       },
       "details": "PostgreSQL database vulnerability - should be filtered out",
       "id": "CVE-2023-67890"
     },
     {
       "analysis": {
-        "detail": "Could not fetch CVE details",
+        "detail": "Unable to determine configuration requirements",
         "justification": "component_not_present",
+        "response": "can_not_fix",
         "state": "under_investigation",
-        "timestamp": "2025-07-06T17:46:50Z"
+        "timestamp": "2025-07-06T18:10:14Z"
       },
       "details": "Linux kernel device driver issue - should be analyzed",
       "id": "CVE-2023-11111"

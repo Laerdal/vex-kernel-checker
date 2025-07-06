@@ -1,0 +1,37 @@
+{
+  "bomFormat": "CycloneDX",
+  "metadata": {
+    "timestamp": "2025-07-06T15:30:00Z",
+    "tools": [
+      {
+        "name": "VEX Test Generator",
+        "version": "1.0"
+      }
+    ]
+  },
+  "specVersion": "1.5",
+  "version": 1,
+  "vulnerabilities": [
+    {
+      "analysis": {
+        "detail": "CVE not related to Linux kernel",
+        "justification": "component_not_present",
+        "state": "not_affected",
+        "timestamp": "2025-07-06T15:40:11Z"
+      },
+      "description": "Linux kernel vulnerability",
+      "id": "CVE-2024-26581",
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": 7.8,
+          "severity": "high"
+        }
+      ],
+      "source": {
+        "name": "NVD",
+        "url": "https://nvd.nist.gov/"
+      }
+    }
+  ]
+}

@@ -19,19 +19,22 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
-    from vex_kernel_checker import VexKernelChecker, VulnerabilityState, Justification, VulnerabilityAnalysis
+    from vex_kernel_checker import VexKernelChecker, VulnerabilityState, Justification, VulnerabilityAnalysis, CVEInfo
 except ImportError:
     # If the above import fails, try to import as if it's a script
     import importlib.util
     spec = importlib.util.spec_from_file_location("vex_kernel_checker", 
                                                  os.path.join(os.path.dirname(os.path.dirname(__file__)), 
-                                                             "vex-kernel-checker.py"))
+                                                             "../vex-kernel-checker.py"))
+    if spec is None or spec.loader is None:
+        raise ImportError("Could not create module spec for vex_kernel_checker")
     vex_kernel_checker = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(vex_kernel_checker)
     VexKernelChecker = vex_kernel_checker.VexKernelChecker
     VulnerabilityState = vex_kernel_checker.VulnerabilityState
     Justification = vex_kernel_checker.Justification
     VulnerabilityAnalysis = vex_kernel_checker.VulnerabilityAnalysis
+    CVEInfo = vex_kernel_checker.CVEInfo
 
 
 class TestVexKernelChecker(unittest.TestCase):
@@ -297,27 +300,27 @@ endif
     def test_kernel_cve_detection(self):
         """Test kernel-related CVE detection."""
         # Test kernel-related CVE
-        kernel_cve = {
-            "id": "CVE-2023-1234",
-            "description": "Linux kernel memory corruption in network subsystem",
-            "references": [
-                {"url": "https://lore.kernel.org/patch/123"},
-                {"url": "https://git.kernel.org/commit/abc123"}
+        kernel_cve = CVEInfo(
+            cve_id="CVE-2023-1234",
+            description="Linux kernel memory corruption in network subsystem",
+            patch_urls=[
+                "https://lore.kernel.org/patch/123",
+                "https://git.kernel.org/commit/abc123"
             ]
-        }
+        )
         
         is_kernel = self.checker.is_kernel_related_cve(kernel_cve)
         self.assertTrue(is_kernel)
         
         # Test non-kernel CVE
-        userspace_cve = {
-            "id": "CVE-2023-5678",
-            "description": "Buffer overflow in userspace application library",
-            "references": [
-                {"url": "https://github.com/somelib/fix"},
-                {"url": "https://example.com/advisory"}
+        userspace_cve = CVEInfo(
+            cve_id="CVE-2023-5678",
+            description="Buffer overflow in apache web server configuration parser",
+            patch_urls=[
+                "https://github.com/somelib/fix",
+                "https://example.com/advisory"
             ]
-        }
+        )
         
         is_kernel = self.checker.is_kernel_related_cve(userspace_cve)
         self.assertFalse(is_kernel)
@@ -416,6 +419,84 @@ endif
         self.assertEqual(report['severity_breakdown']['MEDIUM'], 1)
         self.assertEqual(len(report['high_priority_cves']), 1)
         self.assertEqual(len(report['configuration_issues']), 1)
+    
+    def test_kernel_architecture_detection(self):
+        """Test kernel architecture detection from configuration."""
+        # Test configuration with ARM enabled
+        arm_config = ["CONFIG_ARM", "CONFIG_NET", "CONFIG_USB", "CONFIG_BLOCK"]
+        architectures = VexKernelChecker.detect_kernel_architectures(arm_config)
+        self.assertIn("arm", architectures)
+        self.assertEqual(len(architectures), 1)
+        
+        # Test configuration with multiple architectures (shouldn't happen in real configs)
+        multi_config = ["CONFIG_ARM", "CONFIG_X86", "CONFIG_NET"]
+        architectures = VexKernelChecker.detect_kernel_architectures(multi_config)
+        self.assertIn("arm", architectures)
+        self.assertIn("x86", architectures)
+        
+        # Test configuration with no architecture
+        no_arch_config = ["CONFIG_NET", "CONFIG_USB", "CONFIG_BLOCK"]
+        architectures = VexKernelChecker.detect_kernel_architectures(no_arch_config)
+        self.assertEqual(len(architectures), 0)
+        
+        # Test with x86 architecture
+        x86_config = ["CONFIG_X86", "CONFIG_NET"]
+        architectures = VexKernelChecker.detect_kernel_architectures(x86_config)
+        self.assertIn("x86", architectures)
+        self.assertEqual(len(architectures), 1)
+    
+    def test_config_option_filtering(self):
+        """Test configuration option filtering functionality."""
+        test_options = {
+            # These should be kept (functional options)
+            'CONFIG_NET',
+            'CONFIG_USB',
+            'CONFIG_DRM_TTM_HELPER',
+            'CONFIG_MACSEC',
+            'CONFIG_HID_MAYFLASH',
+            
+            # These should be filtered out (build/debug options)
+            'CONFIG_CC_HAS_AUTO_VAR_INIT_PATTERN',
+            'CONFIG_GCC_PLUGIN_RANDSTRUCT',
+            'CONFIG_LTO_CLANG',
+            'CONFIG_CFI_CLANG',
+            'CONFIG_DEBUG_INFO_BTF',
+            'CONFIG_FTRACE_MCOUNT_USE_RECORDMCOUNT',
+            'CONFIG_FRAME_WARN',
+            'CONFIG_STRIP_ASM_SYMS',
+            'CONFIG_HEADERS_INSTALL',
+            'CONFIG_EXPERT',
+            'CONFIG_SUPERH',
+            'CONFIG_UML',
+            'CONFIG_HAVE_STACK_VALIDATION'
+        }
+        
+        filtered = self.checker._filter_relevant_config_options(test_options)
+        
+        # Should keep functional options
+        self.assertIn('CONFIG_NET', filtered)
+        self.assertIn('CONFIG_USB', filtered)
+        self.assertIn('CONFIG_DRM_TTM_HELPER', filtered)
+        self.assertIn('CONFIG_MACSEC', filtered)
+        self.assertIn('CONFIG_HID_MAYFLASH', filtered)
+        
+        # Should filter out build/debug options
+        self.assertNotIn('CONFIG_CC_HAS_AUTO_VAR_INIT_PATTERN', filtered)
+        self.assertNotIn('CONFIG_GCC_PLUGIN_RANDSTRUCT', filtered)
+        self.assertNotIn('CONFIG_LTO_CLANG', filtered)
+        self.assertNotIn('CONFIG_CFI_CLANG', filtered)
+        self.assertNotIn('CONFIG_DEBUG_INFO_BTF', filtered)
+        self.assertNotIn('CONFIG_FTRACE_MCOUNT_USE_RECORDMCOUNT', filtered)
+        self.assertNotIn('CONFIG_FRAME_WARN', filtered)
+        self.assertNotIn('CONFIG_STRIP_ASM_SYMS', filtered)
+        self.assertNotIn('CONFIG_HEADERS_INSTALL', filtered)
+        self.assertNotIn('CONFIG_EXPERT', filtered)
+        self.assertNotIn('CONFIG_SUPERH', filtered)
+        self.assertNotIn('CONFIG_UML', filtered)
+        self.assertNotIn('CONFIG_HAVE_STACK_VALIDATION', filtered)
+        
+        # Should significantly reduce the number of options
+        self.assertLess(len(filtered), len(test_options) / 2)
 
 
 class TestIntegration(unittest.TestCase):

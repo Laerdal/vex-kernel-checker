@@ -33,10 +33,10 @@ pip install -r requirements.txt
 ./scripts/setup.sh
 
 # Analyze example VEX files
-python vex-kernel-checker.py examples/test_vex.json
+python3 vex-kernel-checker.py examples/test_vex.json
 
 # For kernel config analysis (requires kernel source)
-python vex-kernel-checker.py examples/test_kernel_cve.json --kernel-source /path/to/kernel
+python3 vex-kernel-checker.py examples/test_kernel_cve.json --kernel-source /path/to/kernel
 ```
 
 ## Integration Opportunities
@@ -64,7 +64,7 @@ python vex-kernel-checker.py examples/test_kernel_cve.json --kernel-source /path
 1. **Kernel Configuration Validation**:
 
    ```bash
-   python vex-kernel-checker.py simpad-vex.json --kernel-config ../simpad2-dr-bsp/recipes-kernel/linux/dr-upstream/simpad2p/defconfig --kernel-source /home/kopdal/dev/laerdal/simpad-plus-top-9.1.0/build/tmp/work-shared/dr-imx8mp/kernel-source
+   python3 vex-kernel-checker.py simpad-vex.json --kernel-config ../simpad2-dr-bsp/recipes-kernel/linux/dr-upstream/simpad2p/defconfig --kernel-source /home/kopdal/dev/laerdal/simpad-plus-top-9.1.0/build/tmp/work-shared/dr-imx8mp/kernel-source
    ```
 
 2. **Build Integration**:
@@ -72,7 +72,7 @@ python vex-kernel-checker.py examples/test_kernel_cve.json --kernel-source /path
    ```bash
    # In BitBake recipe
    do_security_check() {
-       python ${WORKDIR}/vex-kernel-checker.py ${VEX_FILE} --config-only
+       python3 ${WORKDIR}/vex-kernel-checker.py ${VEX_FILE} --config-only
    }
    ```
 
@@ -80,7 +80,7 @@ python vex-kernel-checker.py examples/test_kernel_cve.json --kernel-source /path
 
    ```bash
    # Before release
-   python vex-kernel-checker.py release-vex.json --verbose --output security-report.json
+   python3 vex-kernel-checker.py release-vex.json --verbose --output security-report.json
    ```
 
 ## Documentation
