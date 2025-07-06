@@ -10,7 +10,7 @@
     {
       "analysis": {
         "detail": "Unable to determine configuration requirements",
-        "justification": "component_not_present",
+        "justification": "code_not_present",
         "state": "under_investigation",
         "timestamp": "2025-07-06T17:46:47Z"
       },
@@ -20,7 +20,7 @@
     {
       "analysis": {
         "detail": "Could not fetch CVE details",
-        "justification": "component_not_present",
+        "justification": "code_not_present",
         "state": "under_investigation",
         "timestamp": "2025-07-06T17:46:47Z"
       },
@@ -30,7 +30,7 @@
     {
       "analysis": {
         "detail": "Could not fetch CVE details",
-        "justification": "component_not_present",
+        "justification": "code_not_present",
         "state": "under_investigation",
         "timestamp": "2025-07-06T17:46:49Z"
       },
@@ -40,7 +40,7 @@
     {
       "analysis": {
         "detail": "Could not fetch CVE details",
-        "justification": "component_not_present",
+        "justification": "code_not_present",
         "state": "under_investigation",
         "timestamp": "2025-07-06T17:46:50Z"
       },

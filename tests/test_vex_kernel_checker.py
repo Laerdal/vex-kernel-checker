@@ -25,7 +25,7 @@ except ImportError:
     import importlib.util
     spec = importlib.util.spec_from_file_location("vex_kernel_checker", 
                                                  os.path.join(os.path.dirname(os.path.dirname(__file__)), 
-                                                             "../vex-kernel-checker.py"))
+                                                             "vex-kernel-checker.py"))
     if spec is None or spec.loader is None:
         raise ImportError("Could not create module spec for vex_kernel_checker")
     vex_kernel_checker = importlib.util.module_from_spec(spec)
@@ -179,7 +179,11 @@ endif
         self.assertFalse(checker.verbose)
         self.assertIsNone(checker.api_key)
         self.assertIsNone(checker.edge_driver_path)
-        self.assertFalse(checker.check_patches)  # Should be False without API key/driver
+        self.assertTrue(checker.check_patches)  # Should be True by default (NVD API doesn't require API key)
+        
+        # Test initialization with patch checking disabled
+        checker_no_patches = VexKernelChecker(disable_patch_checking=True)
+        self.assertFalse(checker_no_patches.check_patches)
         
         # Test initialization with parameters
         checker_verbose = VexKernelChecker(verbose=True, analyze_all_cves=True)
@@ -266,13 +270,19 @@ endif
         analysis = self.checker.in_kernel_config(enabled_configs, kernel_config)
         self.assertEqual(analysis.state, VulnerabilityState.EXPLOITABLE)
         
-        # Test case 2: Required config is missing
-        missing_configs = {"CONFIG_NET", "CONFIG_MISSING_FEATURE"}
+        # Test case 2: Some configs enabled, some missing
+        mixed_configs = {"CONFIG_NET", "CONFIG_MISSING_FEATURE"}
+        analysis = self.checker.in_kernel_config(mixed_configs, kernel_config)
+        # Should be EXPLOITABLE if any configs are enabled (CONFIG_NET is enabled)
+        self.assertEqual(analysis.state, VulnerabilityState.EXPLOITABLE)
+        
+        # Test case 3: All required configs are missing 
+        missing_configs = {"CONFIG_MISSING_FEATURE", "CONFIG_ANOTHER_MISSING"}
         analysis = self.checker.in_kernel_config(missing_configs, kernel_config)
         self.assertEqual(analysis.state, VulnerabilityState.NOT_AFFECTED)
         self.assertEqual(analysis.justification, Justification.CODE_NOT_PRESENT)
         
-        # Test case 3: No specific configs found (default case)
+        # Test case 4: No specific configs found (default case)
         empty_configs = set()
         analysis = self.checker.in_kernel_config(empty_configs, kernel_config)
         self.assertEqual(analysis.state, VulnerabilityState.IN_TRIAGE)
@@ -393,7 +403,7 @@ endif
                     "id": "CVE-2023-1234",
                     "severity": "HIGH",
                     "analysis": {
-                        "state": "exploitable",
+                        "state": VulnerabilityState.EXPLOITABLE.value,
                         "detail": "Configuration enabled"
                     }
                 },
@@ -401,8 +411,8 @@ endif
                     "id": "CVE-2023-5678",
                     "severity": "MEDIUM",
                     "analysis": {
-                        "state": "not_affected",
-                        "justification": "requires_configuration",
+                        "state": VulnerabilityState.NOT_AFFECTED.value,
+                        "justification": Justification.REQUIRES_CONFIGURATION.value,
                         "detail": "Required config not enabled"
                     }
                 }
@@ -421,26 +431,27 @@ endif
         """Test kernel architecture detection from configuration."""
         # Test configuration with ARM enabled
         arm_config = ["CONFIG_ARM", "CONFIG_NET", "CONFIG_USB", "CONFIG_BLOCK"]
-        architectures = VexKernelChecker.detect_kernel_architectures(arm_config)
-        self.assertIn("arm", architectures)
-        self.assertEqual(len(architectures), 1)
+        arch, arch_config = VexKernelChecker.extract_arch_from_config(arm_config)
+        self.assertEqual(arch, "arm")
+        self.assertEqual(arch_config, "CONFIG_ARM")
         
-        # Test configuration with multiple architectures (shouldn't happen in real configs)
-        multi_config = ["CONFIG_ARM", "CONFIG_X86", "CONFIG_NET"]
-        architectures = VexKernelChecker.detect_kernel_architectures(multi_config)
-        self.assertIn("arm", architectures)
-        self.assertIn("x86", architectures)
+        # Test configuration with X86_64 (more specific should take precedence)
+        x86_64_config = ["CONFIG_X86_64", "CONFIG_X86", "CONFIG_NET"]
+        arch, arch_config = VexKernelChecker.extract_arch_from_config(x86_64_config)
+        self.assertEqual(arch, "x86_64")
+        self.assertEqual(arch_config, "CONFIG_X86_64")
         
         # Test configuration with no architecture
         no_arch_config = ["CONFIG_NET", "CONFIG_USB", "CONFIG_BLOCK"]
-        architectures = VexKernelChecker.detect_kernel_architectures(no_arch_config)
-        self.assertEqual(len(architectures), 0)
+        arch, arch_config = VexKernelChecker.extract_arch_from_config(no_arch_config)
+        self.assertIsNone(arch)
+        self.assertIsNone(arch_config)
         
         # Test with x86 architecture
         x86_config = ["CONFIG_X86", "CONFIG_NET"]
-        architectures = VexKernelChecker.detect_kernel_architectures(x86_config)
-        self.assertIn("x86", architectures)
-        self.assertEqual(len(architectures), 1)
+        arch, arch_config = VexKernelChecker.extract_arch_from_config(x86_config)
+        self.assertEqual(arch, "x86")
+        self.assertEqual(arch_config, "CONFIG_X86")
     
     def test_config_option_filtering(self):
         """Test configuration option filtering functionality."""

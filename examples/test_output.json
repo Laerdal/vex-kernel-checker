@@ -10,7 +10,7 @@
     {
       "analysis": {
         "detail": "CVE not related to Linux kernel",
-        "justification": "component_not_present",
+        "justification": "code_not_present",
         "state": "not_affected",
         "timestamp": "2025-07-06T11:45:41Z"
       },

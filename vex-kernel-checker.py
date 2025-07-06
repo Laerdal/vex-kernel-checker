@@ -1522,7 +1522,7 @@ class VexKernelChecker:
             
             # Get CVE details
             cve_info = None
-            # Always fetch from NVD API for authoritative CVE data and patch URLs
+            # Always try to fetch from NVD API for authoritative CVE data and patch URLs
             # VEX files should contain CVE IDs only, patch URLs come from NVD
             if self.check_patches:
                 if self.verbose:
@@ -1531,8 +1531,8 @@ class VexKernelChecker:
                 
                 if not cve_info:
                     if self.verbose:
-                        print(f"Could not fetch CVE details for {cve_id} - skipping analysis")
-                    return None  # Don't register analysis outcomes for fetch failures
+                        print(f"Could not fetch CVE details for {cve_id} - proceeding with VEX description analysis")
+                    # Don't return None - continue with VEX description analysis
             
             # Check if kernel-related (unless analyzing all CVEs)
             if not self.analyze_all_cves and cve_info:
@@ -1557,6 +1557,20 @@ class VexKernelChecker:
                     patch_info = self.fetch_patch_content_with_github_priority(patch_url)
                     
                     if patch_info:
+                        # Early architecture compatibility check with patch content
+                        arch_compatibility = self._check_architecture_compatibility(cve, cve_info, patch_info)
+                        if not arch_compatibility['compatible']:
+                            if self.verbose:
+                                print(f"CVE not compatible with current architecture: {arch_compatibility['reason']}")
+                            
+                            return VulnerabilityAnalysis(
+                                state=VulnerabilityState.NOT_AFFECTED,
+                                justification=Justification.REQUIRES_ENVIRONMENT,
+                                response=Response.WILL_NOT_FIX,
+                                detail=arch_compatibility['detail'],
+                                timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                            )
+                        
                         if self.verbose:
                             print(f"🔍 Step 4/4: Analyzing configuration requirements...")
                         # Extract source files from patch
@@ -1626,7 +1640,35 @@ class VexKernelChecker:
                     if self.verbose:
                         print("No patch URL found")
             
-            # Fallback analysis
+            # Driver-specific fallback analysis before general fallback
+            cve_id = cve.get('id', '')
+            description = cve.get('description', '').lower()
+            
+            # Generic driver-specific fallback based on description patterns
+            driver_configs = self._infer_driver_configs_from_description(description)
+            if driver_configs:
+                if self.verbose:
+                    print(f"Applying driver-specific fallback analysis for configs: {', '.join(driver_configs)}")
+                
+                return self.in_kernel_config(driver_configs, kernel_config)
+            
+            # Architecture compatibility check (fallback for non-patch cases)
+            arch_compatibility = self._check_architecture_compatibility(cve, cve_info)
+            if not arch_compatibility['compatible']:
+                if self.verbose:
+                    print(f"CVE not compatible with current architecture: {arch_compatibility['reason']}")
+                
+                return VulnerabilityAnalysis(
+                    state=VulnerabilityState.NOT_AFFECTED,
+                    justification=Justification.REQUIRES_ENVIRONMENT,
+                    response=Response.WILL_NOT_FIX,
+                    detail=arch_compatibility['detail'],
+                    timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                )
+            
+            # Add other driver-specific fallbacks here as needed
+            
+            # General fallback analysis
             return VulnerabilityAnalysis(
                 state=VulnerabilityState.IN_TRIAGE,
                 justification=Justification.CODE_NOT_PRESENT,
@@ -1642,6 +1684,403 @@ class VexKernelChecker:
             
             # Don't register analysis outcomes for errors - return None
             return None
+
+    @timed_method
+    def _infer_driver_configs_from_description(self, description: str) -> Set[str]:
+        """
+        Infer driver-specific configuration options from CVE description.
+        
+        This method analyzes CVE descriptions to identify driver-specific patterns
+        and returns the relevant configuration options for those drivers.
+        """
+        driver_configs = set()
+        description_lower = description.lower()
+        
+        # Driver-specific patterns and their associated configs
+        driver_patterns = {
+            # Network drivers
+            'mlx5': {
+                'CONFIG_MLX5_CORE', 'CONFIG_MLX5_CORE_EN', 'CONFIG_MLX5_EN_ARFS',
+                'CONFIG_MLX5_EN_RXNFC', 'CONFIG_MLX5_INFINIBAND', 'CONFIG_NET',
+                'CONFIG_ETHERNET', 'CONFIG_NETDEVICES'
+            },
+            'mlx4': {
+                'CONFIG_MLX4_CORE', 'CONFIG_MLX4_EN', 'CONFIG_MLX4_INFINIBAND',
+                'CONFIG_NET', 'CONFIG_ETHERNET', 'CONFIG_NETDEVICES'
+            },
+            'mellanox': {
+                'CONFIG_MLX5_CORE', 'CONFIG_MLX4_CORE', 'CONFIG_NET',
+                'CONFIG_ETHERNET', 'CONFIG_NETDEVICES'
+            },
+            'intel ethernet': {
+                'CONFIG_E1000', 'CONFIG_E1000E', 'CONFIG_IGB', 'CONFIG_IGBVF',
+                'CONFIG_IXGB', 'CONFIG_IXGBE', 'CONFIG_I40E', 'CONFIG_ICE',
+                'CONFIG_NET', 'CONFIG_ETHERNET', 'CONFIG_NETDEVICES'
+            },
+            'intel wifi': {
+                'CONFIG_IWLWIFI', 'CONFIG_IWLDVM', 'CONFIG_IWLMVM',
+                'CONFIG_WIRELESS', 'CONFIG_WLAN', 'CONFIG_NET'
+            },
+            'broadcom': {
+                'CONFIG_B44', 'CONFIG_BNX2', 'CONFIG_BNX2X', 'CONFIG_TIGON3',
+                'CONFIG_NET', 'CONFIG_ETHERNET', 'CONFIG_NETDEVICES'
+            },
+            'realtek': {
+                'CONFIG_8139TOO', 'CONFIG_R8169', 'CONFIG_NET',
+                'CONFIG_ETHERNET', 'CONFIG_NETDEVICES'
+            },
+            
+            # USB drivers  
+            'usb': {
+                'CONFIG_USB', 'CONFIG_USB_SUPPORT', 'CONFIG_USB_COMMON'
+            },
+            'usb-storage': {
+                'CONFIG_USB_STORAGE', 'CONFIG_USB', 'CONFIG_SCSI'
+            },
+            'usbhid': {
+                'CONFIG_USB_HID', 'CONFIG_HID', 'CONFIG_USB', 'CONFIG_INPUT'
+            },
+            
+            # Bluetooth drivers
+            'bluetooth': {
+                'CONFIG_BT', 'CONFIG_BT_BREDR', 'CONFIG_BT_LE', 'CONFIG_NET'
+            },
+            'btusb': {
+                'CONFIG_BT_HCIBTUSB', 'CONFIG_BT', 'CONFIG_USB'
+            },
+            
+            # WiFi drivers
+            'ath': {
+                'CONFIG_ATH_COMMON', 'CONFIG_ATH9K', 'CONFIG_ATH10K',
+                'CONFIG_WIRELESS', 'CONFIG_WLAN', 'CONFIG_NET'
+            },
+            'ath9k': {
+                'CONFIG_ATH9K', 'CONFIG_ATH_COMMON', 'CONFIG_WIRELESS', 'CONFIG_WLAN'
+            },
+            'ath10k': {
+                'CONFIG_ATH10K', 'CONFIG_ATH_COMMON', 'CONFIG_WIRELESS', 'CONFIG_WLAN'
+            },
+            'rtl8': {
+                'CONFIG_RTL8180', 'CONFIG_RTL8187', 'CONFIG_RTL8192CE',
+                'CONFIG_WIRELESS', 'CONFIG_WLAN', 'CONFIG_NET'
+            },
+            
+            # Graphics drivers
+            'drm': {
+                'CONFIG_DRM', 'CONFIG_DRM_KMS_HELPER'
+            },
+            'i915': {
+                'CONFIG_DRM_I915', 'CONFIG_DRM', 'CONFIG_PCI'
+            },
+            'amdgpu': {
+                'CONFIG_DRM_AMDGPU', 'CONFIG_DRM', 'CONFIG_PCI'
+            },
+            'radeon': {
+                'CONFIG_DRM_RADEON', 'CONFIG_DRM', 'CONFIG_PCI'
+            },
+            'nouveau': {
+                'CONFIG_DRM_NOUVEAU', 'CONFIG_DRM', 'CONFIG_PCI'
+            },
+            
+            # Sound drivers
+            'alsa': {
+                'CONFIG_SND', 'CONFIG_SOUND', 'CONFIG_SND_PCM'
+            },
+            'snd_': {
+                'CONFIG_SND', 'CONFIG_SOUND'
+            },
+            
+            # Storage drivers
+            'nvme': {
+                'CONFIG_BLK_DEV_NVME', 'CONFIG_NVME_CORE', 'CONFIG_PCI', 'CONFIG_BLOCK'
+            },
+            'scsi': {
+                'CONFIG_SCSI', 'CONFIG_SCSI_LOWLEVEL', 'CONFIG_BLOCK'
+            },
+            'ahci': {
+                'CONFIG_SATA_AHCI', 'CONFIG_ATA', 'CONFIG_BLOCK', 'CONFIG_PCI'
+            },
+            'mmc': {
+                'CONFIG_MMC', 'CONFIG_MMC_BLOCK'
+            },
+            
+            # Input drivers
+            'input': {
+                'CONFIG_INPUT', 'CONFIG_INPUT_KEYBOARD', 'CONFIG_INPUT_MOUSE'
+            },
+            'hid': {
+                'CONFIG_HID', 'CONFIG_INPUT'
+            },
+            
+            # Virtualization drivers
+            'kvm': {
+                'CONFIG_KVM', 'CONFIG_VIRTUALIZATION'
+            },
+            'xen': {
+                'CONFIG_XEN', 'CONFIG_PARAVIRT'
+            },
+            'vmware': {
+                'CONFIG_VMWARE_BALLOON', 'CONFIG_VMXNET3', 'CONFIG_NET'
+            },
+            
+            # Filesystem drivers
+            'ext4': {
+                'CONFIG_EXT4_FS', 'CONFIG_EXT4_USE_FOR_EXT2', 'CONFIG_BLOCK'
+            },
+            'xfs': {
+                'CONFIG_XFS_FS', 'CONFIG_BLOCK'
+            },
+            'btrfs': {
+                'CONFIG_BTRFS_FS', 'CONFIG_BLOCK'
+            },
+            'nfs': {
+                'CONFIG_NFS_FS', 'CONFIG_NFS_V4', 'CONFIG_NET'
+            },
+            
+            # Security drivers
+            'selinux': {
+                'CONFIG_SECURITY_SELINUX', 'CONFIG_SECURITY'
+            },
+            'apparmor': {
+                'CONFIG_SECURITY_APPARMOR', 'CONFIG_SECURITY'
+            },
+        }
+        
+        # Check for driver patterns in the description
+        for pattern, configs in driver_patterns.items():
+            if pattern in description_lower:
+                driver_configs.update(configs)
+                if self.verbose:
+                    print(f"Found driver pattern '{pattern}' - adding configs: {', '.join(configs)}")
+        
+        # Additional pattern-based detection for specific subsystems
+        
+        # Detect network subsystem patterns
+        net_patterns = ['net/', 'drivers/net/', 'network', 'netdev', 'skb', 'socket']
+        if any(pattern in description_lower for pattern in net_patterns):
+            driver_configs.update(['CONFIG_NET', 'CONFIG_NETDEVICES'])
+        
+        # Detect USB subsystem patterns  
+        usb_patterns = ['usb', 'drivers/usb/', 'urb', 'endpoint']
+        if any(pattern in description_lower for pattern in usb_patterns):
+            driver_configs.update(['CONFIG_USB', 'CONFIG_USB_SUPPORT'])
+        
+        # Detect graphics subsystem patterns
+        gpu_patterns = ['drm', 'gpu', 'graphics', 'display', 'framebuffer']
+        if any(pattern in description_lower for pattern in gpu_patterns):
+            driver_configs.update(['CONFIG_DRM', 'CONFIG_FB'])
+        
+        # Detect storage subsystem patterns
+        storage_patterns = ['block', 'disk', 'storage', 'scsi', 'ata', 'ide']
+        if any(pattern in description_lower for pattern in storage_patterns):
+            driver_configs.update(['CONFIG_BLOCK'])
+        
+        # Detect wireless patterns
+        wireless_patterns = ['wireless', 'wifi', 'wlan', '802.11']
+        if any(pattern in description_lower for pattern in wireless_patterns):
+            driver_configs.update(['CONFIG_WIRELESS', 'CONFIG_WLAN', 'CONFIG_NET'])
+        
+        # Detect sound patterns
+        sound_patterns = ['sound', 'audio', 'alsa', 'pcm']
+        if any(pattern in description_lower for pattern in sound_patterns):
+            driver_configs.update(['CONFIG_SOUND', 'CONFIG_SND'])
+        
+        return driver_configs
+
+    @timed_method
+    def _check_architecture_compatibility(self, cve: Dict, cve_info: Optional['CVEInfo'] = None, patch_content: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Check if a CVE is compatible with the detected system architecture.
+        
+        Args:
+            cve: CVE dictionary with description and ID
+            cve_info: Optional CVE info object with patch URLs 
+            patch_content: Optional patch content for analysis
+        
+        Returns a dictionary with:
+        - compatible: bool indicating if CVE is compatible
+        - reason: string explaining why it's not compatible (if applicable)
+        - detail: detailed description for the analysis
+        """
+        if not self.arch:
+            # If no architecture detected, assume compatible
+            return {
+                'compatible': True,
+                'reason': 'No architecture detected',
+                'detail': 'Architecture compatibility could not be determined'
+            }
+        
+        description = cve.get('description', '').lower()
+        cve_id = cve.get('id', 'unknown')
+        
+        # Architecture-specific keywords that indicate CVE targets specific architectures
+        arch_specific_patterns = {
+            'x86': ['x86', 'intel', 'amd64', 'i386', 'i486', 'i586', 'i686'],
+            'x86_64': ['x86_64', 'amd64', 'intel 64', 'x64'],
+            'arm': ['arm32', 'armv7', 'armv6', 'arm cortex'],
+            'arm64': ['arm64', 'aarch64', 'armv8'],
+            'mips': ['mips', 'mips32', 'mips64'],
+            'powerpc': ['powerpc', 'ppc', 'ppc32', 'ppc64'],
+            'riscv': ['riscv', 'risc-v', 'riscv32', 'riscv64'],
+            's390': ['s390', 's390x', 'ibm z'],
+            'sparc': ['sparc', 'sparc32', 'sparc64', 'sun'],
+            'alpha': ['alpha', 'dec alpha'],
+            'ia64': ['ia64', 'itanium'],
+            'm68k': ['m68k', 'motorola 68k'],
+            'sh': ['superh', 'sh4'],
+            'microblaze': ['microblaze'],
+            'parisc': ['parisc', 'pa-risc'],
+            'xtensa': ['xtensa']
+        }
+        
+        # Check if CVE description mentions specific architectures
+        mentioned_archs = []
+        for arch, patterns in arch_specific_patterns.items():
+            for pattern in patterns:
+                if pattern in description:
+                    mentioned_archs.append(arch)
+                    break
+        
+        # Remove duplicates and normalize
+        mentioned_archs = list(set(mentioned_archs))
+        
+        # Normalize current architecture for comparison
+        current_arch_normalized = self.arch.lower()
+        if current_arch_normalized == 'x86_64':
+            current_arch_alternatives = ['x86_64', 'amd64', 'x64']
+        elif current_arch_normalized == 'arm64':
+            current_arch_alternatives = ['arm64', 'aarch64']
+        elif current_arch_normalized == 'powerpc':
+            current_arch_alternatives = ['powerpc', 'ppc']
+        else:
+            current_arch_alternatives = [current_arch_normalized]
+        
+        # Check for incompatibility
+        if mentioned_archs:
+            # Check if any mentioned architecture matches current architecture
+            compatible = any(
+                mentioned_arch in current_arch_alternatives or 
+                any(alt in mentioned_arch for alt in current_arch_alternatives)
+                for mentioned_arch in mentioned_archs
+            )
+            
+            if not compatible:
+                # Architecture mismatch found
+                mentioned_archs_str = ', '.join(mentioned_archs)
+                return {
+                    'compatible': False,
+                    'reason': f'CVE targets {mentioned_archs_str} but system uses {self.arch}',
+                    'detail': f"CVE targets {mentioned_archs_str} architecture but this system uses {self.arch}. Architecture is not compatible."
+                }
+        
+        # Check for architecture-specific file paths in common CVE patterns
+        arch_path_patterns = {
+            'x86': [r'arch/x86/', r'arch/i386/', r'/x86/', r'_x86_', r'intel'],
+            'arm': [r'arch/arm/', r'/arm/', r'_arm_', r'cortex'],
+            'arm64': [r'arch/arm64/', r'/arm64/', r'_arm64_', r'aarch64'],
+            'mips': [r'arch/mips/', r'/mips/', r'_mips_'],
+            'powerpc': [r'arch/powerpc/', r'arch/ppc/', r'/powerpc/', r'/ppc/', r'_ppc_'],
+            'riscv': [r'arch/riscv/', r'/riscv/', r'_riscv_'],
+            's390': [r'arch/s390/', r'/s390/', r'_s390_'],
+            'sparc': [r'arch/sparc/', r'/sparc/', r'_sparc_'],
+        }
+        
+        # Check for architecture-specific paths in description
+        for arch, patterns in arch_path_patterns.items():
+            if arch != current_arch_normalized:
+                for pattern in patterns:
+                    if pattern in description:
+                        return {
+                            'compatible': False,
+                            'reason': f'CVE contains {arch}-specific paths but system uses {self.arch}',
+                            'detail': f"CVE contains {arch}-specific code but this system uses {self.arch}. Architecture is not compatible."
+                        }
+        
+        # Additional check for explicit architecture mentions in common CVE formats
+        explicit_arch_mentions = [
+            # Common patterns like "on x86" or "in ARM"
+            r'\bon\s+(x86|arm|mips|powerpc|sparc|s390)',
+            r'\bin\s+(x86|arm|mips|powerpc|sparc|s390)',
+            r'\bfor\s+(x86|arm|mips|powerpc|sparc|s390)',
+            # Architecture-specific register or instruction mentions
+            r'\b(rax|rbx|rcx|rdx|rsi|rdi|rsp|rbp)\b',  # x86_64 registers
+            r'\b(eax|ebx|ecx|edx|esi|edi|esp|ebp)\b',  # x86 registers
+            r'\b(r0|r1|r2|r3|r4|r5|r6|r7|r8|r9|r10|r11|r12|sp|lr|pc)\b.*arm',  # ARM registers
+        ]
+        
+        import re
+        for pattern in explicit_arch_mentions:
+            match = re.search(pattern, description, re.IGNORECASE)
+            if match:
+                mentioned_item = match.group(1) if match.groups() else match.group(0)
+                
+                # Check if it's compatible with current architecture
+                is_compatible = False
+                if 'x86' in mentioned_item.lower() and current_arch_normalized in ['x86', 'x86_64']:
+                    is_compatible = True
+                elif 'arm' in mentioned_item.lower() and current_arch_normalized in ['arm', 'arm64']:
+                    is_compatible = True
+                elif any(reg in mentioned_item.lower() for reg in ['rax', 'rbx', 'eax', 'ebx']) and current_arch_normalized in ['x86', 'x86_64']:
+                    is_compatible = True
+                elif 'r0' in mentioned_item.lower() and 'arm' in description and current_arch_normalized in ['arm', 'arm64']:
+                    is_compatible = True
+                
+                if not is_compatible:
+                    return {
+                        'compatible': False,
+                        'reason': f'CVE contains architecture-specific details for different architecture',
+                        'detail': f"CVE contains architecture-specific details not compatible with {self.arch}. Architecture is not used."
+                    }
+        
+        # Check patch content for architecture-specific file paths if available
+        if patch_content:
+            # Look for architecture-specific file paths in patch content
+            patch_lines = patch_content.split('\n')
+            arch_specific_file_paths = []
+            
+            for line in patch_lines:
+                # Check for file path indicators in patches (diff headers)
+                if line.startswith('+++') or line.startswith('---') or line.startswith('diff --git'):
+                    # Extract file paths from patch headers
+                    for arch, patterns in arch_path_patterns.items():
+                        if arch != current_arch_normalized:
+                            for pattern in patterns:
+                                if pattern.replace('r\'', '').replace('\'', '') in line:
+                                    arch_specific_file_paths.append((arch, line.strip()))
+                                    break
+            
+            if arch_specific_file_paths:
+                detected_arch = arch_specific_file_paths[0][0]  # Get first detected architecture
+                return {
+                    'compatible': False,
+                    'reason': f'Patch modifies {detected_arch}-specific files but system uses {self.arch}',
+                    'detail': f"Patch modifies {detected_arch}-specific files but this system uses {self.arch}. Architecture is not compatible."
+                }
+        
+        # Check patch URLs for architecture-specific patterns if available
+        if cve_info and hasattr(cve_info, 'patch_urls') and cve_info.patch_urls:
+            for patch_url in cve_info.patch_urls:
+                patch_url_lower = patch_url.lower()
+                
+                # Check for architecture-specific paths in patch URLs
+                for arch, patterns in arch_path_patterns.items():
+                    if arch != current_arch_normalized:
+                        for pattern in patterns:
+                            # Remove regex markers for simple string matching in URLs
+                            simple_pattern = pattern.replace('r\'', '').replace('\'', '').replace('/', '%2F')
+                            if simple_pattern in patch_url_lower or pattern.replace('r\'', '').replace('\'', '') in patch_url_lower:
+                                return {
+                                    'compatible': False,
+                                    'reason': f'Patch URL targets {arch}-specific files but system uses {self.arch}',
+                                    'detail': f"Patch targets {arch}-specific files but this system uses {self.arch}. Architecture is not compatible."
+                                }
+        
+        # If we get here, no incompatibility was detected
+        return {
+            'compatible': True,
+            'reason': 'No architecture incompatibility detected',
+            'detail': f'CVE appears compatible with {self.arch} architecture'
+        }
 
     @timed_method
     def _process_cve_parallel(self, cve: Dict, kernel_config: List[str], kernel_source_path: str) -> Tuple[str, Optional[VulnerabilityAnalysis]]:
@@ -1780,7 +2219,8 @@ class VexKernelChecker:
             # Skip if already analyzed and not forcing re-analysis
             if not reanalyse and 'analysis' in vuln:
                 existing_state = vuln['analysis'].get('state')
-                if existing_state in ['resolved', 'resolved_with_pedigree', 'exploitable', 'false_positive', 'not_affected']:
+                final_states = {e.value for e in VulnerabilityState if e != VulnerabilityState.IN_TRIAGE}
+                if existing_state in final_states:
                     if self.verbose:
                         print(f"Skipping {cve_vuln_id} - already analyzed as {existing_state}")
                     continue
@@ -1854,18 +2294,18 @@ class VexKernelChecker:
     @timed_method
     def generate_vulnerability_report(self, vex_data: Dict) -> Dict:
         """Generate a comprehensive vulnerability report from VEX data."""
-        report = {
-            'resolved': 0,
-            'resolved_with_pedigree': 0,
-            'exploitable': 0,
-            'in_triage': 0,
-            'false_positive': 0,
-            'not_affected': 0,
-            'total': 0,
-            'vulnerabilities': {},
-            'summary': {},
-            'timestamp': time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        }
+        # Initialize report with all vulnerability states from enum
+        report = {}
+        
+        # Add all state counts
+        for state in VulnerabilityState:
+            report[state.value] = 0
+            
+        # Add other fields
+        report['total'] = 0
+        report['vulnerabilities'] = {}
+        report['summary'] = {}
+        report['timestamp'] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         
         if 'vulnerabilities' not in vex_data:
             return report
@@ -1880,24 +2320,17 @@ class VexKernelChecker:
         for vuln in vulnerabilities:
             cve_id = vuln.get('id', 'unknown')
             analysis = vuln.get('analysis', {})
-            state = analysis.get('state', 'in_triage')
+            state = analysis.get('state', VulnerabilityState.IN_TRIAGE.value)
             
             # Count by state using CycloneDX v1.6 states
-            if state == 'resolved':
-                report['resolved'] += 1
-            elif state == 'resolved_with_pedigree':
-                report['resolved_with_pedigree'] += 1
-            elif state == 'exploitable':
-                report['exploitable'] += 1
-            elif state == 'in_triage':
-                report['in_triage'] += 1
-            elif state == 'false_positive':
-                report['false_positive'] += 1
-            elif state == 'not_affected':
-                report['not_affected'] += 1
-            else:
+            try:
+                # Validate that the state is a valid enum value
+                valid_state = VulnerabilityState(state)
+                report[valid_state.value] += 1
+            except ValueError:
                 # Default unknown states to in_triage
-                report['in_triage'] += 1
+                report[VulnerabilityState.IN_TRIAGE.value] += 1
+                state = VulnerabilityState.IN_TRIAGE.value
             
             # Store vulnerability details
             vuln_details = {
@@ -1921,8 +2354,9 @@ class VexKernelChecker:
             'by_state': by_state,
             'by_severity': by_severity,
             'completion_rate': (
-                (report['resolved'] + report['resolved_with_pedigree'] + report['exploitable'] + 
-                 report['false_positive'] + report['not_affected']) / report['total'] * 100
+                (report[VulnerabilityState.RESOLVED.value] + report[VulnerabilityState.RESOLVED_WITH_PEDIGREE.value] + 
+                 report[VulnerabilityState.EXPLOITABLE.value] + report[VulnerabilityState.FALSE_POSITIVE.value] + 
+                 report[VulnerabilityState.NOT_AFFECTED.value]) / report['total'] * 100
                 if report['total'] > 0 else 0
             )
         }
@@ -1977,9 +2411,38 @@ class VexKernelChecker:
                 else:
                     if 'state' in analysis:
                         state = analysis['state']
-                        valid_states = ['resolved', 'resolved_with_pedigree', 'exploitable', 'in_triage', 'false_positive', 'not_affected']
+                        # Use enum values for validation
+                        valid_states = [s.value for s in VulnerabilityState]
                         if state not in valid_states:
                             issues.append(f"{vuln_prefix}: invalid state '{state}', must be one of {valid_states}")
+                    
+                    if 'justification' in analysis:
+                        justification = analysis['justification']
+                        if justification is not None:  # Allow None values
+                            # Check if justification is incorrectly formatted as a list
+                            if isinstance(justification, list):
+                                if len(justification) == 1:
+                                    issues.append(f"{vuln_prefix}: justification should be a string, not an array. Use '{justification[0]}' instead of {justification}")
+                                else:
+                                    issues.append(f"{vuln_prefix}: justification should be a single string, not an array {justification}")
+                            else:
+                                valid_justifications = [j.value for j in Justification]
+                                if justification not in valid_justifications:
+                                    issues.append(f"{vuln_prefix}: invalid justification '{justification}', must be one of {valid_justifications}")
+                    
+                    if 'response' in analysis:
+                        response = analysis['response']
+                        if response is not None:  # Allow None values
+                            # Check if response is incorrectly formatted as a list
+                            if isinstance(response, list):
+                                if len(response) == 1:
+                                    issues.append(f"{vuln_prefix}: response should be a string, not an array. Use '{response[0]}' instead of {response}")
+                                else:
+                                    issues.append(f"{vuln_prefix}: response should be a single string, not an array {response}")
+                            else:
+                                valid_responses = [r.value for r in Response]
+                                if response not in valid_responses:
+                                    issues.append(f"{vuln_prefix}: invalid response '{response}', must be one of {valid_responses}")
         
         return issues
 
@@ -1990,12 +2453,12 @@ class VexKernelChecker:
         print("="*60)
         
         total = report.get('total', 0)
-        resolved = report.get('resolved', 0)
-        resolved_with_pedigree = report.get('resolved_with_pedigree', 0)
-        exploitable = report.get('exploitable', 0)
-        in_triage = report.get('in_triage', 0)
-        false_positive = report.get('false_positive', 0)
-        not_affected = report.get('not_affected', 0)
+        resolved = report.get(VulnerabilityState.RESOLVED.value, 0)
+        resolved_with_pedigree = report.get(VulnerabilityState.RESOLVED_WITH_PEDIGREE.value, 0)
+        exploitable = report.get(VulnerabilityState.EXPLOITABLE.value, 0)
+        in_triage = report.get(VulnerabilityState.IN_TRIAGE.value, 0)
+        false_positive = report.get(VulnerabilityState.FALSE_POSITIVE.value, 0)
+        not_affected = report.get(VulnerabilityState.NOT_AFFECTED.value, 0)
         
         print(f"Total vulnerabilities analyzed: {total}")
         print(f"├─ ✅ Not affected: {not_affected}")
@@ -2023,7 +2486,7 @@ class VexKernelChecker:
             vulnerabilities = report.get('vulnerabilities', {})
             exploitable_list = [
                 cve_id for cve_id, details in vulnerabilities.items() 
-                if details.get('state') == 'exploitable'
+                if details.get('state') == VulnerabilityState.EXPLOITABLE.value
             ]
             for cve_id in sorted(exploitable_list[:10]):  # Show first 10
                 vuln_details = vulnerabilities[cve_id]
@@ -2248,7 +2711,9 @@ class VexKernelChecker:
             for path_pattern, configs in path_mappings.items():
                 if path_pattern in rel_path:
                     config_options.update(configs)
-            
+                    if self.verbose:
+                        print(f"Path pattern match: {path_pattern} - adding configs: {', '.join(configs)}")
+        
             # Generate CONFIG options from directory names
             for part in path_parts:
                 if part and part != '.':
@@ -2256,7 +2721,7 @@ class VexKernelChecker:
                     config_name = f"CONFIG_{part.upper().replace('-', '_').replace('.', '_')}"
                     if re.match(r'CONFIG_[A-Z0-9_]+$', config_name):
                         config_options.add(config_name)
-            
+        
             # Special handling for known subsystems
             if 'bluetooth' in rel_path.lower():
                 config_options.update(['CONFIG_BT', 'CONFIG_BT_BREDR'])
@@ -2311,19 +2776,68 @@ class VexKernelChecker:
             else:
                 disabled_configs.add(config)
         
-        # Determine vulnerability state
-        if enabled_configs:
+        # Prioritize driver-specific configurations over general ones
+        # Identify critical driver-specific configs
+        critical_driver_configs = set()
+        general_configs = {'CONFIG_NET', 'CONFIG_ETHERNET', 'CONFIG_NETDEVICES', 'CONFIG_USB', 'CONFIG_PCI', 
+                          'CONFIG_BLOCK', 'CONFIG_SCSI', 'CONFIG_SOUND', 'CONFIG_INPUT', 'CONFIG_HID',
+                          'CONFIG_I2C', 'CONFIG_SPI', 'CONFIG_GPIO', 'CONFIG_DMA_ENGINE', 'CONFIG_OF',
+                          'CONFIG_REGMAP', 'CONFIG_IRQ_DOMAIN', 'CONFIG_PINCTRL', 'CONFIG_CLK',
+                          'CONFIG_RESET_CONTROLLER', 'CONFIG_RFS_ACCEL', 'CONFIG_CORE'}
+        
+        # Add architecture configs to general configs so they're not treated as critical
+        arch_general_configs = {
+            'CONFIG_ARM64', 'CONFIG_ARM64_4K_PAGES', 'CONFIG_ARM64_VA_BITS_48', 'CONFIG_ARM64_64K_PAGES',
+            'CONFIG_ARM', 'CONFIG_ARM_THUMB', 'CONFIG_ARM_LPAE',
+            'CONFIG_X86', 'CONFIG_X86_64', 'CONFIG_X86_32', 'CONFIG_64BIT',
+            'CONFIG_MIPS', 'CONFIG_MIPS32_R1', 'CONFIG_MIPS64',
+            'CONFIG_PPC', 'CONFIG_POWERPC', 'CONFIG_PPC64',
+            'CONFIG_RISCV', 'CONFIG_RISCV_ISA_C',
+            'CONFIG_S390', 'CONFIG_S390X',
+            'CONFIG_SPARC', 'CONFIG_SPARC64'
+        }
+        general_configs.update(arch_general_configs)
+        
+        for config in all_config_options:
+            if config not in general_configs and not config.endswith('_C'):  # Filter out generic file-based configs
+                critical_driver_configs.add(config)
+        
+        # Check critical driver configs first
+        enabled_critical = enabled_configs & critical_driver_configs
+        disabled_critical = disabled_configs & critical_driver_configs
+        
+        # Determine vulnerability state based on critical configs
+        if enabled_critical:
+            # Critical driver configs are enabled - system is vulnerable
             detail_parts = []
-            if enabled_configs & config_options:
-                detail_parts.append(f"Enabled configs: {', '.join(enabled_configs & config_options)}")
-            if enabled_configs & arch_configs:
-                detail_parts.append(f"Architecture ({self.arch}): {', '.join(enabled_configs & arch_configs)}")
+            if enabled_critical & config_options:
+                detail_parts.append(f"Enabled critical configs: {', '.join(enabled_critical & config_options)}")
+            if enabled_critical & arch_configs:
+                detail_parts.append(f"Architecture ({self.arch}): {', '.join(enabled_critical & arch_configs)}")
             
             return VulnerabilityAnalysis(
                 state=VulnerabilityState.EXPLOITABLE,
                 justification=Justification.REQUIRES_CONFIGURATION,
                 response=Response.UPDATE,
                 detail="; ".join(detail_parts),
+                timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            )
+        elif disabled_critical:
+            # Critical driver configs are disabled - system is not affected
+            return VulnerabilityAnalysis(
+                state=VulnerabilityState.NOT_AFFECTED,
+                justification=Justification.REQUIRES_CONFIGURATION,
+                response=Response.WILL_NOT_FIX,
+                detail=f"Required driver configs not enabled: {', '.join(disabled_critical)}",
+                timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            )
+        elif enabled_configs:
+            # Only general configs enabled - likely not affected but needs review
+            return VulnerabilityAnalysis(
+                state=VulnerabilityState.IN_TRIAGE,
+                justification=Justification.REQUIRES_CONFIGURATION,
+                response=Response.CAN_NOT_FIX,
+                detail=f"Only general configs enabled, no specific driver configs found: {', '.join(enabled_configs)}",
                 timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             )
         else:

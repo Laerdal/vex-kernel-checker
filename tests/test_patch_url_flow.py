@@ -35,7 +35,7 @@ def test_patch_url_flow():
                 "description": "Linux kernel vulnerability (patches from NVD)",
                 "analysis": {
                     "detail": "Test CVE for patch analysis",
-                    "justification": "component_not_present",
+                    "justification": "code_not_present",
                     "state": "under_investigation"
                 }
             }

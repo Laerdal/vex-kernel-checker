@@ -15,7 +15,7 @@
     {
       "analysis": {
         "detail": "Kernel CVE requiring patch analysis",
-        "justification": "component_not_present",
+        "justification": "code_not_present",
         "state": "under_investigation"
       },
       "description": "Test CVE for patch analysis (patches fetched from NVD)",

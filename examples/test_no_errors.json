@@ -10,7 +10,7 @@
     {
       "analysis": {
         "detail": "Unable to determine configuration requirements",
-        "justification": "component_not_present",
+        "justification": "code_not_present",
         "response": "can_not_fix",
         "state": "under_investigation",
         "timestamp": "2025-07-06T18:16:21Z"
@@ -21,7 +21,7 @@
     {
       "analysis": {
         "detail": "Unable to determine configuration requirements",
-        "justification": "component_not_present",
+        "justification": "code_not_present",
         "response": "can_not_fix",
         "state": "under_investigation",
         "timestamp": "2025-07-06T18:16:21Z"
@@ -32,7 +32,7 @@
     {
       "analysis": {
         "detail": "Unable to determine configuration requirements",
-        "justification": "component_not_present",
+        "justification": "code_not_present",
         "response": "can_not_fix",
         "state": "under_investigation",
         "timestamp": "2025-07-06T18:16:21Z"
@@ -43,7 +43,7 @@
     {
       "analysis": {
         "detail": "Unable to determine configuration requirements",
-        "justification": "component_not_present",
+        "justification": "code_not_present",
         "response": "can_not_fix",
         "state": "under_investigation",
         "timestamp": "2025-07-06T18:16:21Z"
