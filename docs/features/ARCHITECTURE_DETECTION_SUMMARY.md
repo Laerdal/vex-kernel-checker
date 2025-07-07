@@ -94,7 +94,7 @@ Testing with ARM64 configuration:
 python3 vex-kernel-checker.py \
   --vex-file examples/test_small_vex.json \
   --kernel-config test_demo.config \
-  --kernel-source test_kernel_source \
+  --kernel-source examples/test_kernel_source \
   --verbose --config-only
 ```
 

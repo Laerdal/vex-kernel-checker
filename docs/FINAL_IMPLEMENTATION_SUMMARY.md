@@ -88,7 +88,7 @@ VEX Kernel Checker (vex-kernel-checker.py)
 ### Configuration & Examples
 - **`test_demo.config`**: Sample kernel configuration
 - **`test_github_priority.json`**: Sample VEX file for testing
-- **`test_kernel_source/`**: Sample kernel source structure
+- **`examples/test_kernel_source/`**: Sample kernel source structure
 
 ### Documentation
 - **`IMPLEMENTATION_COMPLETE.md`**: Detailed implementation documentation

@@ -263,7 +263,7 @@ def test_full_analysis_workflow():
         updated_vex_data = checker.update_analysis_state(
             vex_data=vex_data,
             kernel_config=kernel_config,
-            kernel_source_path="test_kernel_source",  # Dummy path
+            kernel_source_path="examples/test_kernel_source",  # Sample kernel source
             reanalyse=True
         )
         

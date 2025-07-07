@@ -10,7 +10,7 @@ EXAMPLES_DIR := examples
 DOCS_DIR := docs
 
 # Common commands
-.PHONY: help install test test-quick test-coverage lint format clean benchmark validate setup-dev
+.PHONY: help install test test-quick test-coverage test-unit unittest unittest-quiet unittest-module lint format clean benchmark benchmark-quiet ci-benchmark ci-unittest validate setup-dev
 
 help:  ## Show this help message
 	@echo "VEX Kernel Checker - Development Commands"
@@ -36,7 +36,21 @@ test-coverage:  ## Run tests with coverage reporting
 	$(PYTHON) $(TESTS_DIR)/run_tests.py --coverage
 
 test-unit:  ## Run unit tests only
-	$(PYTHON) -m unittest $(TESTS_DIR).test_vex_kernel_checker -v
+	$(PYTHON) -m unittest discover $(TESTS_DIR) -v
+
+unittest:  ## Run all unit tests using unittest framework
+	$(PYTHON) -m unittest discover $(TESTS_DIR) -v
+
+unittest-quiet:  ## Run unit tests with minimal output
+	$(PYTHON) -m unittest discover $(TESTS_DIR) -q
+
+unittest-module:  ## Run unit tests for specific module (use MODULE=test_module_name)
+	@if [ -z "$(MODULE)" ]; then \
+		echo "Usage: make unittest-module MODULE=test_module_name"; \
+		echo "Example: make unittest-module MODULE=test_base"; \
+		exit 1; \
+	fi
+	$(PYTHON) -m unittest $(TESTS_DIR).$(MODULE) -v
 
 benchmark:  ## Run performance benchmarks
 	$(PYTHON) $(TESTS_DIR)/benchmark.py
@@ -135,6 +149,9 @@ ci-lint:  ## Run linting for CI/CD
 
 ci-benchmark:  ## Run benchmarks for CI/CD
 	make benchmark-quiet
+
+ci-unittest:  ## Run unit tests for CI/CD
+	make unittest-quiet
 
 # Help with common development workflows
 workflow-fix:  ## Common workflow after making changes
