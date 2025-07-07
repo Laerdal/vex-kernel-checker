@@ -2,6 +2,8 @@
 Patch management for VEX Kernel Checker.
 """
 
+# flake8: noqa: SC200
+
 import re
 from typing import List, Optional, Set
 

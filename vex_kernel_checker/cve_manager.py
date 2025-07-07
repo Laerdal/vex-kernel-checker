@@ -2,6 +2,8 @@
 CVE data management for VEX Kernel Checker.
 """
 
+# flake8: noqa: SC200
+
 import threading
 import time
 from typing import List, Optional

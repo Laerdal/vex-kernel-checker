@@ -2,6 +2,8 @@
 Common data structures and utilities for VEX Kernel Checker.
 """
 
+# flake8: noqa: SC200
+
 import functools
 import threading
 import time
@@ -165,7 +167,7 @@ class PerformanceTracker:
             print('\n⏱️  TIMING RESULTS:')
             for name, data in sorted(self.timings.items()):
                 if 'duration' in data:
-                    print(f'  {name}: {data['duration']:.3f}s')
+                    print(f'  {name}: {data["duration"]:.3f}s')
 
         if self.cache_stats:
             print('\n💾 CACHE PERFORMANCE:')

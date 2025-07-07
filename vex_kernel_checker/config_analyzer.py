@@ -2,6 +2,8 @@
 Configuration analysis for VEX Kernel Checker.
 """
 
+# flake8: noqa: SC200
+
 import glob
 import os
 import re
@@ -15,7 +17,6 @@ from .common import (
     VulnerabilityState,
     timed_method,
 )
-
 
 class ConfigurationAnalyzer(VexKernelCheckerBase):
     """Analyzes kernel configurations and Makefiles to determine config requirements."""
@@ -564,11 +565,11 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
             detail_parts = []
             if enabled_required:
                 detail_parts.append(
-                    f'Required configs enabled: {', '.join(sorted(enabled_required))}'
+                    f'Required configs enabled: {", ".join(sorted(enabled_required))}'
                 )
             if enabled_optional:
                 detail_parts.append(
-                    f'Optional configs enabled: {', '.join(sorted(enabled_optional))}'
+                    f'Optional configs enabled: {", ".join(sorted(enabled_optional))}'
                 )
 
             detail = '; '.join(detail_parts)

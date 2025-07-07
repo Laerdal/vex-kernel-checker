@@ -9,6 +9,8 @@ This module handles generating various types of reports:
 - Performance reports
 """
 
+# flake8: noqa: SC200
+
 import json
 import time
 from typing import Any, Dict, List
@@ -22,7 +24,7 @@ class ReportGenerator(VexKernelCheckerBase):
 
     def __init__(self, **kwargs):
         """Initialize the ReportGenerator.
-        
+
         Args:
             **kwargs: Additional keyword arguments passed to the base class.
         """
@@ -214,7 +216,7 @@ class ReportGenerator(VexKernelCheckerBase):
         not_affected = report.get('not_affected', 0)
 
         print('\n📊 VULNERABILITY ANALYSIS SUMMARY')
-        print(f'{'='*50}')
+        print(f'{"="*50}')
         print(f'📋 Total vulnerabilities: {total}')
         print(f'├─ ✅ Not affected: {not_affected}')
         print(f'├─ 🔧 Resolved: {resolved}')

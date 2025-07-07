@@ -8,6 +8,8 @@ using the refactored modular components.
 MIT License - See LICENSE file for details.
 """
 
+# flake8: noqa: SC200
+
 import argparse
 import os
 import sys
@@ -169,14 +171,14 @@ def setup_architecture_detection(kernel_config, perf_tracker: PerformanceTracker
     else:
         print('Warning: Could not detect architecture from kernel configuration')
         print('This may affect the accuracy of vulnerability analysis')
-    
+
     return arch, arch_config
 
 
 def setup_checker(args, arch):
     """Initialize the VEX Kernel Checker with provided arguments."""
     disable_patch_checking = args.config_only
-    
+
     print('Initializing VEX Kernel Checker...')
     checker = VexKernelChecker(
         verbose=args.verbose,
@@ -192,7 +194,7 @@ def setup_checker(args, arch):
     if args.clear_cache:
         print('Clearing caches...')
         checker.clear_all_caches()
-    
+
     return checker
 
 
@@ -266,19 +268,19 @@ def run_analysis_workflow(args, output_file, perf_tracker):
     """Run the complete analysis workflow."""
     # Load and validate data
     vex_data, kernel_config = load_and_validate_data(args, perf_tracker)
-    
+
     # Setup architecture detection
     arch, arch_config = setup_architecture_detection(kernel_config, perf_tracker)
-    
+
     # Setup checker
     checker = setup_checker(args, arch)
-    
+
     # Validate VEX data
     validate_and_show_vex_data(checker, vex_data)
-    
+
     # Perform analysis
     updated_vex_data = perform_analysis(args, checker, vex_data, kernel_config, arch)
-    
+
     # Save results and generate reports
     save_results_and_generate_reports(args, checker, updated_vex_data, output_file)
 

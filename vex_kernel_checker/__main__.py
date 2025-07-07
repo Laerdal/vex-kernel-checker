@@ -8,5 +8,5 @@ python3 -m vex_kernel_checker [args...]
 
 from .main_checker import main
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

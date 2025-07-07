@@ -5,18 +5,19 @@ Main Checker - Orchestrator for VEX Kernel Checker components
 This module provides the main VexKernelChecker class that coordinates all other components.
 """
 
-import os
-import time
-from typing import Dict, List, Optional, Any, Tuple
+# flake8: noqa: SC200
 
-from .common import VulnerabilityState, Justification, Response, PerformanceTracker
+import time
+from typing import Dict, List, Optional
+
+from .architecture_manager import ArchitectureManager
 from .base import VexKernelCheckerBase
+from .common import PerformanceTracker
+from .config_analyzer import ConfigurationAnalyzer
 from .cve_manager import CVEDataManager
 from .patch_manager import PatchManager
-from .config_analyzer import ConfigurationAnalyzer
-from .vulnerability_analyzer import VulnerabilityAnalyzer
-from .architecture_manager import ArchitectureManager
 from .report_generator import ReportGenerator
+from .vulnerability_analyzer import VulnerabilityAnalyzer
 
 
 class VexKernelChecker(VexKernelCheckerBase):
@@ -168,7 +169,7 @@ class VexKernelChecker(VexKernelCheckerBase):
         start_time = time.time()
 
         if self.verbose:
-            print( 'Starting vulnerability analysis...')
+            print('Starting vulnerability analysis...')
             print(f'  Reanalyse: {reanalyse}')
             print(f"  Specific CVE: {cve_id if cve_id else 'All CVEs'}")
             print(f'  Check patches: {self.check_patches}')

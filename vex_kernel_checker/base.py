@@ -2,6 +2,8 @@
 Base class for VEX Kernel Checker with common functionality.
 """
 
+# flake8: noqa: SC200
+
 import json
 import os
 import re

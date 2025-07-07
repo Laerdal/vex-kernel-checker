@@ -8,6 +8,8 @@ This module handles architecture detection and architecture-specific operations:
 - Architecture-specific configuration mapping
 """
 
+# flake8: noqa: SC200
+
 import os
 import platform
 import subprocess
@@ -22,7 +24,7 @@ class ArchitectureManager(VexKernelCheckerBase):
 
     def __init__(self, **kwargs):
         """Initialize the ArchitectureManager.
-        
+
         Args:
             **kwargs: Additional keyword arguments passed to the base class.
         """
@@ -402,7 +404,7 @@ class ArchitectureManager(VexKernelCheckerBase):
         if found_configs:
             return {
                 'valid': True,
-                'reason': f'Found architecture configs: {', '.join(sorted(found_configs))}',
+                'reason': f'Found architecture configs: {", ".join(sorted(found_configs))}',
                 'found_configs': found_configs,
                 'missing_configs': required_configs - found_configs,
             }
