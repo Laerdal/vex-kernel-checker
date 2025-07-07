@@ -29,7 +29,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
         self._advanced_config_patterns = self._compile_advanced_config_patterns()
 
         if self.verbose:
-            print("Configuration Analyzer initialized")
+            print('Configuration Analyzer initialized')
 
     @timed_method
     def extract_config_options_from_makefile(
@@ -55,21 +55,21 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
         processed_files.add(makefile_path)
 
         # Check cache first
-        cache_key = f"{makefile_path}:{source_file_name}"
+        cache_key = f'{makefile_path}:{source_file_name}'
         if cache_key in self._config_cache:
-            self._record_cache_hit("config")
+            self._record_cache_hit('config')
             return self._config_cache[cache_key]
 
-        self._record_cache_miss("config")
+        self._record_cache_miss('config')
         config_options = set()
 
         try:
             makefile_vars = self._get_cached_makefile_vars(makefile_path)
             content = self._get_cached_file_content(makefile_path)
 
-            for line in content.split("\n"):
+            for line in content.split('\n'):
                 line = line.strip()
-                if not line or line.startswith("#"):
+                if not line or line.startswith('#'):
                     continue
 
                 # Extract configs from this line
@@ -79,7 +79,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
                 config_options.update(line_configs)
 
                 # Handle includes
-                if line.startswith("include") or "include" in line:
+                if line.startswith('include') or 'include' in line:
                     include_patterns = self._resolve_include_pattern(
                         line, makefile_path, makefile_vars
                     )
@@ -100,7 +100,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
 
         except Exception as e:
             if self.verbose:
-                print(f"Error processing makefile {makefile_path}: {e}")
+                print(f'Error processing makefile {makefile_path}: {e}')
 
         return config_options
 
@@ -111,7 +111,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
         resolved_paths = []
 
         # Extract include path from line
-        include_match = re.search(r"include\s+(.+)", include_pattern)
+        include_match = re.search(r'include\s+(.+)', include_pattern)
         if not include_match:
             return resolved_paths
 
@@ -129,7 +129,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
             full_path = expanded_path
 
         # Handle wildcards
-        if "*" in expanded_path or "?" in expanded_path:
+        if '*' in expanded_path or '?' in expanded_path:
             try:
                 glob_matches = glob.glob(full_path)
                 resolved_paths.extend(
@@ -155,12 +155,12 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
         # Check if line references our source file
         has_source_ref = (
             source_file_name in expanded_line
-            or source_file_name.replace(".c", ".o") in expanded_line
+            or source_file_name.replace('.c', '.o') in expanded_line
         )
 
         # Skip lines that don't reference our file and aren't conditional
         if not has_source_ref and not any(
-            keyword in expanded_line.lower() for keyword in ["ifdef", "ifeq", "ifneq"]
+            keyword in expanded_line.lower() for keyword in ['ifdef', 'ifeq', 'ifneq']
         ):
             return config_options
 
@@ -174,13 +174,13 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
                     else:
                         config_option = match
 
-                    if config_option and config_option.startswith("CONFIG_"):
+                    if config_option and config_option.startswith('CONFIG_'):
                         config_options.add(config_option)
 
         # Special handling for conditional compilation
-        if any(keyword in expanded_line for keyword in ["ifdef", "ifeq", "ifneq"]):
+        if any(keyword in expanded_line for keyword in ['ifdef', 'ifeq', 'ifneq']):
             # Extract configs from conditional statements
-            config_matches = re.findall(r"CONFIG_[A-Z0-9_]+", expanded_line)
+            config_matches = re.findall(r'CONFIG_[A-Z0-9_]+', expanded_line)
             config_options.update(config_matches)
 
         return config_options
@@ -194,8 +194,8 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
             var_name = match.group(1)
             return makefile_vars.get(var_name, match.group(0))
 
-        expanded = re.sub(r"\$\(([^)]+)\)", replace_var, expanded)
-        expanded = re.sub(r"\$\{([^}]+)\}", replace_var, expanded)
+        expanded = re.sub(r'\$\(([^)]+)\)', replace_var, expanded)
+        expanded = re.sub(r'\$\{([^}]+)\}', replace_var, expanded)
 
         return expanded
 
@@ -207,15 +207,15 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
         dependencies = set()
 
         # Cache check
-        cache_key = f"{config_option}:{kernel_source_path}"
+        cache_key = f'{config_option}:{kernel_source_path}'
         if cache_key in self._kconfig_cache:
-            self._record_cache_hit("config")
+            self._record_cache_hit('config')
             return self._kconfig_cache[cache_key]
 
-        self._record_cache_miss("config")
+        self._record_cache_miss('config')
 
         # Look for Kconfig files
-        kconfig_patterns = ["Kconfig*", "*/Kconfig*", "**/Kconfig*"]
+        kconfig_patterns = ['Kconfig*', '*/Kconfig*', '**/Kconfig*']
 
         kconfig_files = []
         for pattern in kconfig_patterns:
@@ -236,7 +236,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
                 dependencies.update(file_deps)
             except Exception as e:
                 if self.verbose:
-                    print(f"Error parsing Kconfig file {kconfig_file}: {e}")
+                    print(f'Error parsing Kconfig file {kconfig_file}: {e}')
 
         # Cache result
         self._kconfig_cache[cache_key] = dependencies
@@ -248,7 +248,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
 
         try:
             content = self._get_cached_file_content(kconfig_path)
-            lines = content.split("\n")
+            lines = content.split('\n')
 
             current_config = None
             in_target_config = False
@@ -257,28 +257,28 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
                 line = line.strip()
 
                 # Look for the target config definition
-                if line.startswith("config "):
+                if line.startswith('config '):
                     current_config = line.split()[1] if len(line.split()) > 1 else None
                     in_target_config = current_config == target_config.replace(
-                        "CONFIG_", ""
+                        'CONFIG_', ""
                     )
 
                 # Extract dependencies if we're in the target config
                 if in_target_config:
-                    if line.startswith("depends on ") or line.startswith("select "):
-                        dep_line = line.replace("depends on ", "").replace(
-                            "select ", ""
+                    if line.startswith('depends on ') or line.startswith('select '):
+                        dep_line = line.replace('depends on ', "").replace(
+                            'select ', ""
                         )
                         # Extract CONFIG_ options from dependency line
-                        config_matches = re.findall(r"\b[A-Z0-9_]+\b", dep_line)
+                        config_matches = re.findall(r'\b[A-Z0-9_]+\b', dep_line)
                         for match in config_matches:
-                            if not match.startswith("CONFIG_"):
-                                dependencies.add(f"CONFIG_{match}")
+                            if not match.startswith('CONFIG_'):
+                                dependencies.add(f'CONFIG_{match}')
                             else:
                                 dependencies.add(match)
 
                 # Reset when we hit another config
-                if line.startswith("config ") and not in_target_config:
+                if line.startswith('config ') and not in_target_config:
                     current_config = None
 
         except Exception:
@@ -308,7 +308,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
         filtered_configs = self._filter_relevant_config_options(all_configs)
         if self.verbose and filtered_configs:
             print(
-                f"Found {len(filtered_configs)} config options for {source_file_name}"
+                f'Found {len(filtered_configs)} config options for {source_file_name}'
             )
 
         return filtered_configs
@@ -321,12 +321,12 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
         config_options = set()
 
         # Cache check
-        cache_key = f"makefiles:{source_file_path}:{kernel_source_path}"
+        cache_key = f'makefiles:{source_file_path}:{kernel_source_path}'
         if cache_key in self._config_cache:
-            self._record_cache_hit("config")
+            self._record_cache_hit('config')
             return self._config_cache[cache_key]
 
-        self._record_cache_miss("config")
+        self._record_cache_miss('config')
 
         # Use optimized makefile finding
         makefiles = self._find_makefiles_fast(kernel_source_path, source_file_path)
@@ -340,7 +340,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
                 config_options.update(makefile_configs)
             except Exception as e:
                 if self.verbose:
-                    print(f"Error processing makefile {makefile_path}: {e}")
+                    print(f'Error processing makefile {makefile_path}: {e}')
 
         # Add advanced source-based analysis
         advanced_configs = self._advanced_config_search(
@@ -353,7 +353,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
 
         if self.verbose:
             print(
-                f"Total {len(config_options)} config options found for {source_file_path}"
+                f'Total {len(config_options)} config options found for {source_file_path}'
             )
 
         return config_options
@@ -365,12 +365,12 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
         makefiles = []
 
         # Cache check
-        cache_key = f"makefiles_fast:{kernel_source_path}:{source_file_path}"
+        cache_key = f'makefiles_fast:{kernel_source_path}:{source_file_path}'
         if cache_key in self._makefile_location_cache:
-            self._record_cache_hit("makefile")
+            self._record_cache_hit('makefile')
             return self._makefile_location_cache[cache_key]
 
-        self._record_cache_miss("makefile")
+        self._record_cache_miss('makefile')
 
         try:
             # Start from source file directory and work up
@@ -396,7 +396,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
 
             for search_dir in search_dirs[:10]:  # Limit search depth
                 try:
-                    for filename in ["Makefile", "Kbuild", "Makefile.am"]:
+                    for filename in ['Makefile', 'Kbuild', 'Makefile.am']:
                         makefile_path = os.path.join(search_dir, filename)
                         if os.path.exists(makefile_path):
                             priority = self._get_directory_priority(
@@ -415,7 +415,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
 
         except Exception as e:
             if self.verbose:
-                print(f"Error in fast makefile discovery: {e}")
+                print(f'Error in fast makefile discovery: {e}')
 
         return makefiles
 
@@ -424,7 +424,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
     ) -> int:
         """Calculate priority score for a directory (lower = higher priority)."""
         # Check cache
-        cache_key = f"{directory_path}:{source_file_path}"
+        cache_key = f'{directory_path}:{source_file_path}'
         if cache_key in self._directory_priority_cache:
             return self._directory_priority_cache[cache_key]
 
@@ -439,11 +439,11 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
             # Boost priority for certain directory patterns
             dir_name = os.path.basename(directory_path).lower()
 
-            if dir_name in ["drivers", "net", "fs", "sound", "crypto"]:
+            if dir_name in ['drivers', 'net', 'fs', 'sound', 'crypto']:
                 priority -= 20  # Higher priority
-            elif dir_name in ["arch", "kernel", "mm"]:
+            elif dir_name in ['arch', 'kernel', 'mm']:
                 priority -= 10
-            elif dir_name.startswith("test") or "debug" in dir_name:
+            elif dir_name.startswith('test') or 'debug' in dir_name:
                 priority += 50  # Lower priority
 
             # Boost if directory is in source file path
@@ -463,10 +463,10 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
 
         # Filter patterns for irrelevant configs
         irrelevant_patterns = [
-            r"CONFIG_.*_DEBUG.*",
-            r"CONFIG_.*_TEST.*",
-            r"CONFIG_COMPILE_TEST",
-            r"CONFIG_.*_SELFTEST.*",
+            r'CONFIG_.*_DEBUG.*',
+            r'CONFIG_.*_TEST.*',
+            r'CONFIG_COMPILE_TEST',
+            r'CONFIG_.*_SELFTEST.*',
         ]
 
         for config in config_options:
@@ -503,12 +503,12 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
                         else:
                             config_option = match
 
-                        if config_option and config_option.startswith("CONFIG_"):
+                        if config_option and config_option.startswith('CONFIG_'):
                             config_options.add(config_option)
 
         except Exception as e:
             if self.verbose:
-                print(f"Error in advanced config search for {source_file_path}: {e}")
+                print(f'Error in advanced config search for {source_file_path}: {e}')
 
         return config_options
 
@@ -530,7 +530,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
             return VulnerabilityAnalysis(
                 state=VulnerabilityState.IN_TRIAGE,
                 justification=Justification.CODE_NOT_PRESENT,
-                timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                timestamp=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
             )
 
         # Convert kernel config to set for faster lookup
@@ -545,7 +545,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
 
         for config in config_options:
             # Classify configs as required vs optional based on patterns
-            if any(pattern in config for pattern in ["_CORE", "_BASE", "_SUPPORT"]):
+            if any(pattern in config for pattern in ['_CORE', '_BASE', '_SUPPORT']):
                 required_configs.add(config)
             else:
                 optional_configs.add(config)
@@ -564,32 +564,32 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
             detail_parts = []
             if enabled_required:
                 detail_parts.append(
-                    f"Required configs enabled: {', '.join(sorted(enabled_required))}"
+                    f'Required configs enabled: {', '.join(sorted(enabled_required))}'
                 )
             if enabled_optional:
                 detail_parts.append(
-                    f"Optional configs enabled: {', '.join(sorted(enabled_optional))}"
+                    f'Optional configs enabled: {', '.join(sorted(enabled_optional))}'
                 )
 
-            detail = "; ".join(detail_parts)
+            detail = '; '.join(detail_parts)
 
             return VulnerabilityAnalysis(
                 state=VulnerabilityState.EXPLOITABLE,
                 justification=Justification.REQUIRES_CONFIGURATION,
                 detail=detail,
-                timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                timestamp=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
             )
         else:
             # No relevant configs are enabled
             detail = (
-                f"Required configs not enabled: {', '.join(sorted(required_configs))}"
+                f'Required configs not enabled: {', '.join(sorted(required_configs))}'
             )
 
             return VulnerabilityAnalysis(
                 state=VulnerabilityState.NOT_AFFECTED,
                 justification=Justification.CODE_NOT_PRESENT,
                 detail=detail,
-                timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                timestamp=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
             )
 
     def find_config_options_for_file(
@@ -615,14 +615,14 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
             config_options.update(makefile_configs)
 
             # For source files, also try advanced config search
-            if source_file_path.endswith((".c", ".h")):
+            if source_file_path.endswith(('.c', '.h')):
                 advanced_configs = self._advanced_config_search(
                     source_file_path, kernel_source_path
                 )
                 config_options.update(advanced_configs)
 
             # For Makefiles, extract config options directly
-            if "Makefile" in source_file_path or source_file_path.endswith(".mk"):
+            if 'Makefile' in source_file_path or source_file_path.endswith('.mk'):
                 full_path = os.path.join(kernel_source_path, source_file_path)
                 if os.path.exists(full_path):
                     makefile_configs = self.extract_config_options_from_makefile(
@@ -632,11 +632,11 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
 
             if self.verbose and config_options:
                 print(
-                    f"Found {len(config_options)} config options for {source_file_path}: {', '.join(sorted(config_options))}"
+                    f'Found {len(config_options)} config options for {source_file_path}: {', '.join(sorted(config_options))}'
                 )
 
         except Exception as e:
             if self.verbose:
-                print(f"Error analyzing {source_file_path}: {e}")
+                print(f'Error analyzing {source_file_path}: {e}')
 
         return config_options

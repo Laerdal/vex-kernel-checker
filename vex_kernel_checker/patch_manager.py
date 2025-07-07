@@ -44,23 +44,23 @@ class PatchManager(VexKernelCheckerBase):
         self._patch_patterns = self._compile_patch_patterns()
 
         if self.verbose:
-            selenium_status = "available" if SELENIUM_AVAILABLE else "not available"
-            driver_status = "configured" if self.edge_driver_path else "not configured"
+            selenium_status = 'available' if SELENIUM_AVAILABLE else 'not available'
+            driver_status = 'configured' if self.edge_driver_path else 'not configured'
             print(
-                f"Patch Manager initialized - Selenium: {selenium_status}, WebDriver: {driver_status}"
+                f'Patch Manager initialized - Selenium: {selenium_status}, WebDriver: {driver_status}'
             )
 
     def fetch_patch_with_selenium(self, patch_url: str) -> Optional[str]:
         """Fetch patch content using Selenium WebDriver with multiple fallback strategies."""
         if not SELENIUM_AVAILABLE:
             if self.verbose:
-                print("Selenium not available, skipping WebDriver-based patch fetching")
+                print('Selenium not available, skipping WebDriver-based patch fetching')
             return None
 
         if not self.edge_driver_path:
             if self.verbose:
                 print(
-                    "Edge driver path not configured, skipping WebDriver-based patch fetching"
+                    'Edge driver path not configured, skipping WebDriver-based patch fetching'
                 )
             return None
 
@@ -69,7 +69,7 @@ class PatchManager(VexKernelCheckerBase):
 
         for url in urls_to_try:
             if self.verbose:
-                print(f"Attempting to fetch patch from: {url}")
+                print(f'Attempting to fetch patch from: {url}')
 
             patch_content = self._fetch_patch_with_selenium_single(url)
             if patch_content:
@@ -89,28 +89,28 @@ class PatchManager(VexKernelCheckerBase):
         try:
             service = EdgeService(self.edge_driver_path)
             options = webdriver.EdgeOptions()
-            options.add_argument("--headless")
-            options.add_argument("--disable-gpu")
-            options.add_argument("--no-sandbox")
-            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument('--headless')
+            options.add_argument('--disable-gpu')
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
 
             driver = webdriver.Edge(service=service, options=options)
             driver.set_page_load_timeout(30)
 
             if self.verbose:
-                print(f"Loading patch URL: {patch_url}")
+                print(f'Loading patch URL: {patch_url}')
 
             driver.get(patch_url)
 
             # Try multiple selectors to find patch content
             selectors = [
-                "pre.highlight",  # GitHub patch view
-                "pre",  # Generic pre tag
-                ".blob-code-inner",  # GitHub blob view
-                ".file-diff-content",  # Generic diff content
-                "table.diff-table",  # Table-based diff
-                ".diff-content",  # Generic diff class
-                "body",  # Last resort - entire body
+                'pre.highlight',  # GitHub patch view
+                'pre',  # Generic pre tag
+                '.blob-code-inner',  # GitHub blob view
+                '.file-diff-content',  # Generic diff content
+                'table.diff-table',  # Table-based diff
+                '.diff-content',  # Generic diff class
+                'body',  # Last resort - entire body
             ]
 
             for selector in selectors:
@@ -119,13 +119,13 @@ class PatchManager(VexKernelCheckerBase):
                     content = element.text
 
                     if content and (
-                        "diff --git" in content
-                        or "index " in content
-                        or "@@" in content
+                        'diff --git' in content
+                        or 'index ' in content
+                        or '@@' in content
                     ):
                         if self.verbose:
                             print(
-                                f"Successfully extracted patch content using selector: {selector}"
+                                f'Successfully extracted patch content using selector: {selector}'
                             )
                         return content
 
@@ -134,18 +134,18 @@ class PatchManager(VexKernelCheckerBase):
 
             # If no specific selectors work, try the page source
             page_source = driver.page_source
-            if page_source and ("diff --git" in page_source or "index " in page_source):
+            if page_source and ('diff --git' in page_source or 'index ' in page_source):
                 if self.verbose:
-                    print("Extracted patch content from page source")
+                    print('Extracted patch content from page source')
                 return page_source
 
             if self.verbose:
-                print("No patch content found with any selector")
+                print('No patch content found with any selector')
             return None
 
         except Exception as e:
             if self.verbose:
-                print(f"WebDriver error for {patch_url}: {e}")
+                print(f'WebDriver error for {patch_url}: {e}')
             return None
         finally:
             if driver:
@@ -168,17 +168,17 @@ class PatchManager(VexKernelCheckerBase):
             github_content = self.fetch_patch_from_github(commit_id)
             if github_content:
                 if self.verbose:
-                    print("Successfully fetched patch from GitHub API")
+                    print('Successfully fetched patch from GitHub API')
                 return github_content
 
         # Try direct HTTP request to original URL
         try:
             if self.verbose:
-                print(f"Attempting direct HTTP request to: {patch_url}")
+                print(f'Attempting direct HTTP request to: {patch_url}')
 
             headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                "Accept": "text/plain, text/html, application/json, */*",
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'text/plain, text/html, application/json, */*',
             }
 
             response = requests.get(patch_url, headers=headers, timeout=30)
@@ -186,21 +186,21 @@ class PatchManager(VexKernelCheckerBase):
 
             content = response.text
             if content and (
-                "diff --git" in content or "index " in content or "@@" in content
+                'diff --git' in content or 'index ' in content or '@@' in content
             ):
                 if self.verbose:
-                    print("Successfully fetched patch via direct HTTP")
+                    print('Successfully fetched patch via direct HTTP')
                 return content
 
         except Exception as e:
             if self.verbose:
-                print(f"Direct HTTP request failed: {e}")
+                print(f'Direct HTTP request failed: {e}')
 
         # Try alternative URLs (GitHub URLs will be prioritized in the list)
         alternative_urls = self.get_alternative_patch_urls(patch_url)
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Accept": "text/plain, text/html, application/json, */*",
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'text/plain, text/html, application/json, */*',
         }
 
         for alt_url in alternative_urls[:5]:  # Try top 5 alternatives
@@ -213,23 +213,23 @@ class PatchManager(VexKernelCheckerBase):
 
                 content = response.text
                 if content and (
-                    "diff --git" in content or "index " in content or "@@" in content
+                    'diff --git' in content or 'index ' in content or '@@' in content
                 ):
                     if self.verbose:
                         print(
-                            f"Successfully fetched patch from alternative URL: {alt_url}"
+                            f'Successfully fetched patch from alternative URL: {alt_url}'
                         )
                     return content
 
             except Exception as e:
                 if self.verbose:
-                    print(f"Alternative URL {alt_url} failed: {e}")
+                    print(f'Alternative URL {alt_url} failed: {e}')
                 continue
 
         # Final fallback: try Selenium WebDriver
         if SELENIUM_AVAILABLE and self.edge_driver_path:
             if self.verbose:
-                print("Trying WebDriver as final fallback")
+                print('Trying WebDriver as final fallback')
             return self.fetch_patch_with_selenium(patch_url)
 
         return None
@@ -239,7 +239,7 @@ class PatchManager(VexKernelCheckerBase):
         try:
             # Try direct GitHub patch URL first (this includes proper headers)
             github_patch_url = (
-                f"https://github.com/torvalds/linux/commit/{commit_id}.patch"
+                f'https://github.com/torvalds/linux/commit/{commit_id}.patch'
             )
 
             response = requests.get(github_patch_url, timeout=30)
@@ -247,24 +247,24 @@ class PatchManager(VexKernelCheckerBase):
                 content = response.text
                 # Validate that it looks like a patch
                 if content and (
-                    "diff --git" in content or "---" in content or "+++" in content
+                    'diff --git' in content or '---' in content or '+++' in content
                 ):
                     return content
 
             # Fallback to API if direct patch URL doesn't work
-            api_url = f"https://api.github.com/repos/torvalds/linux/commits/{commit_id}"
+            api_url = f'https://api.github.com/repos/torvalds/linux/commits/{commit_id}'
             response = requests.get(api_url, timeout=30)
             if response.status_code == 200:
                 data = response.json()
-                if "files" in data:
+                if 'files' in data:
                     # Construct basic patch from API data
                     patch_lines = []
-                    for file_data in data["files"]:
-                        filename = file_data.get("filename", "unknown")
-                        patch_lines.append(f"diff --git a/{filename} b/{filename}")
-                        if "patch" in file_data:
-                            patch_lines.append(file_data["patch"])
-                    return "\n".join(patch_lines)
+                    for file_data in data['files']:
+                        filename = file_data.get('filename', 'unknown')
+                        patch_lines.append(f'diff --git a/{filename} b/{filename}')
+                        if 'patch' in file_data:
+                            patch_lines.append(file_data['patch'])
+                    return '\n'.join(patch_lines)
 
         except Exception:
             pass
@@ -282,24 +282,24 @@ class PatchManager(VexKernelCheckerBase):
         # Common patterns for file paths in patches
         patterns = [
             self._config_patterns[0],  # diff --git pattern
-            re.compile(r"\+\+\+ b/(.*)"),  # +++ b/filename
-            re.compile(r"--- a/(.*)"),  # --- a/filename
-            re.compile(r"diff --git a/(.*) b/"),  # diff --git a/file b/file
+            re.compile(r'\+\+\+ b/(.*)'),  # +++ b/filename
+            re.compile(r'--- a/(.*)'),  # --- a/filename
+            re.compile(r'diff --git a/(.*) b/'),  # diff --git a/file b/file
         ]
 
-        for line in patch_info.split("\n"):
+        for line in patch_info.split('\n'):
             for pattern in patterns:
                 matches = pattern.findall(line)
                 for match in matches:
                     if isinstance(match, tuple):
-                        match = match[0] if match else ""
+                        match = match[0] if match else ''
 
                     # Clean and validate the file path
                     clean_path = match.strip()
                     if clean_path and (
-                        clean_path.endswith(".c")
-                        or clean_path.endswith(".h")
-                        or "Makefile" in clean_path
+                        clean_path.endswith('.c')
+                        or clean_path.endswith('.h')
+                        or 'Makefile' in clean_path
                     ):
                         # Apply path replacements
                         clean_path = self._replace_multiple_substrings(
@@ -308,7 +308,7 @@ class PatchManager(VexKernelCheckerBase):
                         source_files.add(clean_path)
 
         if self.verbose and source_files:
-            print(f"Extracted {len(source_files)} source files from patch")
+            print(f'Extracted {len(source_files)} source files from patch')
 
         return source_files
 
@@ -328,9 +328,9 @@ class PatchManager(VexKernelCheckerBase):
 
         # Prioritize GitHub URLs first (better API availability and reliability)
         github_templates = [
-            f"https://github.com/torvalds/linux/commit/{commit_id}.patch",
-            f"https://github.com/torvalds/linux/commit/{commit_id}.diff",
-            f"https://github.com/torvalds/linux/commit/{commit_id}",
+            f'https://github.com/torvalds/linux/commit/{commit_id}.patch',
+            f'https://github.com/torvalds/linux/commit/{commit_id}.diff',
+            f'https://github.com/torvalds/linux/commit/{commit_id}',
         ]
 
         # Add the converted GitHub URL at the very beginning if available and different
@@ -345,9 +345,9 @@ class PatchManager(VexKernelCheckerBase):
 
         # Then kernel.org URLs
         kernel_org_templates = [
-            f"https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/patch/?id={commit_id}",
-            f"https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/patch/?id={commit_id}",
-            f"https://git.kernel.org/pub/scm/linux/kernel/git/next/linux-next.git/patch/?id={commit_id}",
+            f'https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/patch/?id={commit_id}',
+            f'https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/patch/?id={commit_id}',
+            f'https://git.kernel.org/pub/scm/linux/kernel/git/next/linux-next.git/patch/?id={commit_id}',
         ]
 
         # Add kernel.org templates
@@ -363,12 +363,12 @@ class PatchManager(VexKernelCheckerBase):
         """Extract commit ID from various URL formats."""
         # Common patterns for commit IDs in URLs
         patterns = [
-            r"commit/([a-f0-9]{40})",  # GitHub commit
-            r"commit/([a-f0-9]{8,40})",  # Shorter commit hashes
-            r"id=([a-f0-9]{40})",  # kernel.org format
-            r"id=([a-f0-9]{8,40})",  # kernel.org shorter
-            r"/([a-f0-9]{40})\.patch",  # Direct patch format
-            r"/([a-f0-9]{40})\.diff",  # Direct diff format
+            r'commit/([a-f0-9]{40})',  # GitHub commit
+            r'commit/([a-f0-9]{8,40})',  # Shorter commit hashes
+            r'id=([a-f0-9]{40})',  # kernel.org format
+            r'id=([a-f0-9]{8,40})',  # kernel.org shorter
+            r'/([a-f0-9]{40})\.patch',  # Direct patch format
+            r'/([a-f0-9]{40})\.diff',  # Direct diff format
         ]
 
         for pattern in patterns:
@@ -380,15 +380,15 @@ class PatchManager(VexKernelCheckerBase):
 
     def _convert_kernel_org_to_github(self, url: str, commit_id: str) -> Optional[str]:
         """Convert kernel.org URLs to GitHub equivalents when possible."""
-        if "git.kernel.org" in url and commit_id:
+        if 'git.kernel.org' in url and commit_id:
             # Check if the GitHub URL exists with a simple HEAD request
-            github_url = f"https://github.com/torvalds/linux/commit/{commit_id}.patch"
+            github_url = f'https://github.com/torvalds/linux/commit/{commit_id}.patch'
             try:
                 response = requests.head(github_url, timeout=10)
                 if response.status_code == 200:
                     if self.verbose:
                         print(
-                            f"Found GitHub equivalent for kernel.org URL: {github_url}"
+                            f'Found GitHub equivalent for kernel.org URL: {github_url}'
                         )
                     return github_url
             except requests.RequestException:
@@ -406,73 +406,73 @@ class PatchManager(VexKernelCheckerBase):
     def test_webdriver_functionality(self) -> bool:
         """Test WebDriver functionality."""
         if not SELENIUM_AVAILABLE:
-            print("❌ Selenium not available")
+            print('❌ Selenium not available')
             return False
 
         if not self.edge_driver_path:
-            print("❌ Edge driver path not configured")
+            print('❌ Edge driver path not configured')
             return False
 
         if not webdriver or not EdgeService or not By:
-            print("❌ Selenium components not properly imported")
+            print('❌ Selenium components not properly imported')
             return False
 
         try:
             service = EdgeService(self.edge_driver_path)
             options = webdriver.EdgeOptions()
-            options.add_argument("--headless")
-            options.add_argument("--disable-gpu")
-            options.add_argument("--no-sandbox")
-            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument('--headless')
+            options.add_argument('--disable-gpu')
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
 
             driver = webdriver.Edge(service=service, options=options)
             driver.set_page_load_timeout(10)
 
             # Test with a simple page
-            driver.get("https://httpbin.org/get")
+            driver.get('https://httpbin.org/get')
 
             # Check if we can find some content
-            body = driver.find_element(By.TAG_NAME, "body")
+            body = driver.find_element(By.TAG_NAME, 'body')
             content = body.text
 
             driver.quit()
 
-            if "httpbin.org" in content:
-                print("✅ WebDriver functionality test passed")
+            if 'httpbin.org' in content:
+                print('✅ WebDriver functionality test passed')
                 return True
             else:
-                print("❌ WebDriver test failed - unexpected content")
+                print('❌ WebDriver test failed - unexpected content')
                 return False
 
         except Exception as e:
-            print(f"❌ WebDriver test failed: {e}")
+            print(f'❌ WebDriver test failed: {e}')
             return False
 
     def extract_patch_url(self, cve_info) -> Optional[str]:
         """Extract the best patch URL from CVE information, prioritizing GitHub."""
         if self.verbose:
-            print("🔍 PatchManager: extract_patch_url called")
+            print('🔍 PatchManager: extract_patch_url called')
 
         if not cve_info.patch_urls:
             if self.verbose:
-                print("🔍 PatchManager: No patch URLs found in CVE info")
+                print('🔍 PatchManager: No patch URLs found in CVE info')
             return None
 
         if self.verbose:
             print(
-                f"🔍 PatchManager: Found {len(cve_info.patch_urls)} patch URLs: {cve_info.patch_urls}"
+                f'🔍 PatchManager: Found {len(cve_info.patch_urls)} patch URLs: {cve_info.patch_urls}'
             )
 
         # Prioritize GitHub URLs first (better API availability and reliability)
         for url in cve_info.patch_urls:
             if self._url_ignored(url):
                 if self.verbose:
-                    print(f"🔍 PatchManager: Ignoring URL: {url}")
+                    print(f'🔍 PatchManager: Ignoring URL: {url}')
                 continue
 
-            if "github.com" in url:
+            if 'github.com' in url:
                 if self.verbose:
-                    print(f"🔍 PatchManager: Selected GitHub URL: {url}")
+                    print(f'🔍 PatchManager: Selected GitHub URL: {url}')
                 return url
 
         # Then try kernel.org URLs
@@ -480,32 +480,32 @@ class PatchManager(VexKernelCheckerBase):
             if self._url_ignored(url):
                 continue
 
-            if "git.kernel.org" in url:
+            if 'git.kernel.org' in url:
                 if self.verbose:
-                    print(f"🔍 PatchManager: Selected kernel.org URL: {url}")
+                    print(f'🔍 PatchManager: Selected kernel.org URL: {url}')
                 return url
 
         # Fall back to any non-ignored URL
         for url in cve_info.patch_urls:
             if not self._url_ignored(url):
                 if self.verbose:
-                    print(f"🔍 PatchManager: Selected fallback URL: {url}")
+                    print(f'🔍 PatchManager: Selected fallback URL: {url}')
                 return url
 
         if self.verbose:
-            print("🔍 PatchManager: All URLs were ignored, returning None")
+            print('🔍 PatchManager: All URLs were ignored, returning None')
         return None
 
     def _url_ignored(self, url: str) -> bool:
         """Check if a URL should be ignored for patch extraction."""
         ignored_patterns = [
-            "cve.org",
-            "mitre.org",
-            "nvd.nist.gov",
-            "ubuntu.com",
-            "debian.org",
-            "redhat.com",
-            "suse.com",
+            'cve.org',
+            'mitre.org',
+            'nvd.nist.gov',
+            'ubuntu.com',
+            'debian.org',
+            'redhat.com',
+            'suse.com',
         ]
 
         url_lower = url.lower()
@@ -518,12 +518,12 @@ class PatchManager(VexKernelCheckerBase):
         # Look for CONFIG_ options in patch content
         import re
 
-        config_pattern = r"CONFIG_[A-Z0-9_]+"
+        config_pattern = r'CONFIG_[A-Z0-9_]+'
         matches = re.findall(config_pattern, patch_content)
 
         for match in matches:
             config_options.add(match)
             if self.verbose:
-                print(f"Found config option in patch: {match}")
+                print(f'Found config option in patch: {match}')
 
         return config_options

@@ -21,23 +21,23 @@ from .patch_manager import PatchManager
 from .report_generator import ReportGenerator
 from .vulnerability_analyzer import VulnerabilityAnalyzer
 
-__version__ = "2.1.0"
-__author__ = "Karsten S. Opdal"
-__license__ = "MIT"
+__version__ = '2.1.0'
+__author__ = 'Karsten S. Opdal'
+__license__ = 'MIT'
 
 __all__ = [
-    "VexKernelCheckerBase",
-    "CVEDataManager",
-    "PatchManager",
-    "ConfigurationAnalyzer",
-    "VulnerabilityAnalyzer",
-    "ArchitectureManager",
-    "ReportGenerator",
-    "VexKernelChecker",
-    "VulnerabilityState",
-    "Justification",
-    "Response",
-    "VulnerabilityAnalysis",
-    "CVEInfo",
-    "PerformanceTracker",
+    'VexKernelCheckerBase',
+    'CVEDataManager',
+    'PatchManager',
+    'ConfigurationAnalyzer',
+    'VulnerabilityAnalyzer',
+    'ArchitectureManager',
+    'ReportGenerator',
+    'VexKernelChecker',
+    'VulnerabilityState',
+    'Justification',
+    'Response',
+    'VulnerabilityAnalysis',
+    'CVEInfo',
+    'PerformanceTracker',
 ]

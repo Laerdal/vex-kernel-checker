@@ -5,17 +5,18 @@ Main Checker - Orchestrator for VEX Kernel Checker components
 This module provides the main VexKernelChecker class that coordinates all other components.
 """
 
+import os
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any, Tuple
 
-from .architecture_manager import ArchitectureManager
+from .common import VulnerabilityState, Justification, Response, PerformanceTracker
 from .base import VexKernelCheckerBase
-from .common import PerformanceTracker
-from .config_analyzer import ConfigurationAnalyzer
 from .cve_manager import CVEDataManager
 from .patch_manager import PatchManager
-from .report_generator import ReportGenerator
+from .config_analyzer import ConfigurationAnalyzer
 from .vulnerability_analyzer import VulnerabilityAnalyzer
+from .architecture_manager import ArchitectureManager
+from .report_generator import ReportGenerator
 
 
 class VexKernelChecker(VexKernelCheckerBase):
@@ -91,12 +92,12 @@ class VexKernelChecker(VexKernelCheckerBase):
         )
 
         if verbose:
-            print("VexKernelChecker initialized with all components")
+            print('VexKernelChecker initialized with all components')
 
     def clear_all_caches(self) -> None:
         """Clear all caches in all components."""
         if self.verbose:
-            print("Clearing all caches...")
+            print('Clearing all caches...')
 
         self.clear_caches()
         self.cve_manager.clear_caches()
@@ -111,32 +112,32 @@ class VexKernelChecker(VexKernelCheckerBase):
         issues = []
 
         if not isinstance(vex_data, dict):
-            issues.append("VEX data is not a dictionary")
+            issues.append('VEX data is not a dictionary')
             return issues
 
-        if "vulnerabilities" not in vex_data:
+        if 'vulnerabilities' not in vex_data:
             issues.append("No 'vulnerabilities' key found in VEX data")
             return issues
 
-        vulnerabilities = vex_data["vulnerabilities"]
+        vulnerabilities = vex_data['vulnerabilities']
         if not isinstance(vulnerabilities, list):
             issues.append("'vulnerabilities' is not a list")
             return issues
 
         if len(vulnerabilities) == 0:
-            issues.append("No vulnerabilities found in VEX data")
+            issues.append('No vulnerabilities found in VEX data')
 
         # Validate individual vulnerabilities
         for i, vuln in enumerate(vulnerabilities):
             if not isinstance(vuln, dict):
-                issues.append(f"Vulnerability {i} is not a dictionary")
+                issues.append(f'Vulnerability {i} is not a dictionary')
                 continue
 
-            if "id" not in vuln:
+            if 'id' not in vuln:
                 issues.append(f"Vulnerability {i} missing 'id' field")
 
             # Check for proper CVE ID format
-            if "id" in vuln and not vuln["id"].startswith("CVE-"):
+            if 'id' in vuln and not vuln['id'].startswith('CVE-'):
                 issues.append(
                     f"Vulnerability {i} has invalid CVE ID format: {vuln['id']}"
                 )
@@ -167,40 +168,40 @@ class VexKernelChecker(VexKernelCheckerBase):
         start_time = time.time()
 
         if self.verbose:
-            print("Starting vulnerability analysis...")
-            print(f"  Reanalyse: {reanalyse}")
+            print( 'Starting vulnerability analysis...')
+            print(f'  Reanalyse: {reanalyse}')
             print(f"  Specific CVE: {cve_id if cve_id else 'All CVEs'}")
-            print(f"  Check patches: {self.check_patches}")
-            print(f"  Analyze all CVEs: {self.analyze_all_cves}")
+            print(f'  Check patches: {self.check_patches}')
+            print(f'  Analyze all CVEs: {self.analyze_all_cves}')
 
-        vulnerabilities = vex_data.get("vulnerabilities", [])
+        vulnerabilities = vex_data.get('vulnerabilities', [])
         if not vulnerabilities:
             if self.verbose:
-                print("No vulnerabilities found in VEX data")
+                print('No vulnerabilities found in VEX data')
             return vex_data
 
         # Filter vulnerabilities to process
         vulns_to_process = []
         for vuln in vulnerabilities:
             # Filter by specific CVE ID if provided
-            if cve_id and vuln.get("id") != cve_id:
+            if cve_id and vuln.get('id') != cve_id:
                 continue
 
             # Skip if already analyzed and not reanalyzing
-            if not reanalyse and "analysis" in vuln:
+            if not reanalyse and 'analysis' in vuln:
                 continue
 
             vulns_to_process.append(vuln)
 
         if self.verbose:
-            print(f"Processing {len(vulns_to_process)} vulnerabilities...")
+            print(f'Processing {len(vulns_to_process)} vulnerabilities...')
 
         processed_count = 0
         updated_vex_data = vex_data.copy()
         start_time = time.time()
 
         for i, vuln in enumerate(vulns_to_process):
-            cve_id_current = vuln.get("id", f"UNKNOWN-{i}")
+            cve_id_current = vuln.get('id', f'UNKNOWN-{i}')
 
             # Progress reporting
             if len(vulns_to_process) > 5:  # Show progress for more than 5 CVEs
@@ -213,24 +214,24 @@ class VexKernelChecker(VexKernelCheckerBase):
                     eta_seconds = remaining_cves * avg_time_per_cve
 
                     if eta_seconds > 60:
-                        eta_str = f"{int(eta_seconds // 60)}m{int(eta_seconds % 60)}s"
+                        eta_str = f'{int(eta_seconds // 60)}m{int(eta_seconds % 60)}s'
                     else:
-                        eta_str = f"{int(eta_seconds)}s"
+                        eta_str = f'{int(eta_seconds)}s'
 
                     print(
-                        f"\r🔍 Progress: {i+1}/{len(vulns_to_process)} ({progress:.1f}%) - Current: {cve_id_current} - ETA: {eta_str}",
-                        end="",
+                        f'\r🔍 Progress: {i+1}/{len(vulns_to_process)} ({progress:.1f}%) - Current: {cve_id_current} - ETA: {eta_str}',
+                        end='',
                         flush=True,
                     )
                 else:
                     print(
-                        f"\r🔍 Progress: {i+1}/{len(vulns_to_process)} ({progress:.1f}%) - Current: {cve_id_current}",
-                        end="",
+                        f'\r🔍 Progress: {i+1}/{len(vulns_to_process)} ({progress:.1f}%) - Current: {cve_id_current}',
+                        end='',
                         flush=True,
                     )
             elif self.verbose:
                 print(
-                    f"\n📋 Processing {cve_id_current} ({i+1}/{len(vulns_to_process)})..."
+                    f'\n📋 Processing {cve_id_current} ({i+1}/{len(vulns_to_process)})...'
                 )
 
             try:
@@ -244,49 +245,49 @@ class VexKernelChecker(VexKernelCheckerBase):
                     # Update vulnerability with analysis
                     vuln_index = None
                     for idx, orig_vuln in enumerate(
-                        updated_vex_data["vulnerabilities"]
+                        updated_vex_data['vulnerabilities']
                     ):
-                        if orig_vuln.get("id") == cve_id_current:
+                        if orig_vuln.get('id') == cve_id_current:
                             vuln_index = idx
                             break
 
                     if vuln_index is not None:
-                        updated_vex_data["vulnerabilities"][vuln_index][
-                            "analysis"
+                        updated_vex_data['vulnerabilities'][vuln_index][
+                            'analysis'
                         ] = analysis_result
                         processed_count += 1
                 else:
                     if self.verbose:
                         print(
-                            f"  Skipping {cve_id_current} - not kernel related or analysis failed"
+                            f'  Skipping {cve_id_current} - not kernel related or analysis failed'
                         )
 
                     # If reanalyzing, remove existing analysis for skipped CVEs
                     if reanalyse:
                         vuln_index = None
                         for idx, orig_vuln in enumerate(
-                            updated_vex_data["vulnerabilities"]
+                            updated_vex_data['vulnerabilities']
                         ):
-                            if orig_vuln.get("id") == cve_id_current:
+                            if orig_vuln.get('id') == cve_id_current:
                                 vuln_index = idx
                                 break
 
                         if (
                             vuln_index is not None
-                            and "analysis"
-                            in updated_vex_data["vulnerabilities"][vuln_index]
+                            and 'analysis'
+                            in updated_vex_data['vulnerabilities'][vuln_index]
                         ):
-                            del updated_vex_data["vulnerabilities"][vuln_index][
-                                "analysis"
+                            del updated_vex_data['vulnerabilities'][vuln_index][
+                                'analysis'
                             ]
                             if self.verbose:
                                 print(
-                                    f"    Removed existing analysis from {cve_id_current}"
+                                    f'    Removed existing analysis from {cve_id_current}'
                                 )
 
             except Exception as e:
                 if self.verbose:
-                    print(f"  Error processing {cve_id_current}: {e}")
+                    print(f'  Error processing {cve_id_current}: {e}')
                 # Do NOT add error analysis - leave CVE unprocessed
                 # This allows for manual review or retry later
 
@@ -295,22 +296,22 @@ class VexKernelChecker(VexKernelCheckerBase):
             print()  # New line after progress reporting
 
         # Update metadata
-        if "metadata" not in updated_vex_data:
-            updated_vex_data["metadata"] = {}
+        if 'metadata' not in updated_vex_data:
+            updated_vex_data['metadata'] = {}
 
-        updated_vex_data["metadata"].update(
+        updated_vex_data['metadata'].update(
             {
-                "last_analysis": self.get_current_timestamp(),
-                "processed_count": processed_count,
-                "tool_version": "2.0",
-                "analysis_method": "kernel_config_analysis",
+                'last_analysis': self.get_current_timestamp(),
+                'processed_count': processed_count,
+                'tool_version': '2.0',
+                'analysis_method': 'kernel_config_analysis',
             }
         )
 
         total_time = time.time() - start_time
         if self.verbose:
-            print(f"\n✅ Analysis completed in {total_time:.2f}s")
-            print(f"   Processed: {processed_count} vulnerabilities")
+            print(f'\n✅ Analysis completed in {total_time:.2f}s')
+            print(f'   Processed: {processed_count} vulnerabilities')
 
         return updated_vex_data
 
@@ -345,9 +346,9 @@ class VexKernelChecker(VexKernelCheckerBase):
             return analysis_result.to_dict()
 
         except Exception as e:
-            cve_id = vuln.get("id", "UNKNOWN")
+            cve_id = vuln.get('id', 'UNKNOWN')
             if self.verbose:
-                print(f"  Error analyzing {cve_id}: {e}")
+                print(f'  Error analyzing {cve_id}: {e}')
             # Return None to indicate analysis failed - CVE remains unprocessed
             return None
 
@@ -362,14 +363,14 @@ class VexKernelChecker(VexKernelCheckerBase):
     def print_performance_stats(self) -> None:
         """Print performance statistics."""
         # Simple implementation using available performance data
-        print("\n📊 Performance Statistics:")
-        print("=" * 50)
+        print('\n📊 Performance Statistics:')
+        print('=' * 50)
 
         # Show cache statistics
-        print(f"Cache hits: {self._cache_hits}")
-        print(f"Cache misses: {self._cache_misses}")
+        print(f'Cache hits: {self._cache_hits}')
+        print(f'Cache misses: {self._cache_misses}')
 
         # Show processed CVEs
-        print(f"Processed CVEs: {len(self._processed_cves)}")
+        print(f'Processed CVEs: {len(self._processed_cves)}')
 
-        print("=" * 50)
+        print('=' * 50)
