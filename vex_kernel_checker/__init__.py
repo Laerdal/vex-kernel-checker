@@ -1,18 +1,25 @@
 """
-VEX Kernel Checker Package
+VEX Kernel Checker Package.
 
 A modular vulnerability analysis tool for Linux kernel configurations.
 """
 
-from .base import VexKernelCheckerBase
-from .cve_manager import CVEDataManager
-from .patch_manager import PatchManager
-from .config_analyzer import ConfigurationAnalyzer
-from .vulnerability_analyzer import VulnerabilityAnalyzer
 from .architecture_manager import ArchitectureManager
-from .report_generator import ReportGenerator
+from .base import VexKernelCheckerBase
+from .common import (
+    CVEInfo,
+    Justification,
+    PerformanceTracker,
+    Response,
+    VulnerabilityAnalysis,
+    VulnerabilityState,
+)
+from .config_analyzer import ConfigurationAnalyzer
+from .cve_manager import CVEDataManager
 from .main_checker import VexKernelChecker
-from .common import *
+from .patch_manager import PatchManager
+from .report_generator import ReportGenerator
+from .vulnerability_analyzer import VulnerabilityAnalyzer
 
 __version__ = "2.1.0"
 __author__ = "Karsten S. Opdal"
@@ -20,7 +27,7 @@ __license__ = "MIT"
 
 __all__ = [
     "VexKernelCheckerBase",
-    "CVEDataManager", 
+    "CVEDataManager",
     "PatchManager",
     "ConfigurationAnalyzer",
     "VulnerabilityAnalyzer",
@@ -32,5 +39,5 @@ __all__ = [
     "Response",
     "VulnerabilityAnalysis",
     "CVEInfo",
-    "PerformanceTracker"
+    "PerformanceTracker",
 ]

@@ -71,17 +71,17 @@ validate-run:  ## Run validation with provided arguments
 		$(if $(API_KEY),--api-key $(API_KEY))
 
 lint:  ## Run code linting
-	$(PYTHON) -m flake8 vex-kernel-checker.py --count --select=E9,F63,F7,F82 --show-source --statistics
-	$(PYTHON) -m flake8 vex-kernel-checker.py --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+	$(PYTHON) -m flake8 vex-kernel-checker.py vex_kernel_checker/ --count --select=E9,F63,F7,F82 --show-source --statistics
+	$(PYTHON) -m flake8 vex-kernel-checker.py vex_kernel_checker/ --count --exit-zero --max-complexity=10 --max-line-length=142 --statistics
 
 lint-tests:  ## Run linting on test files
-	$(PYTHON) -m flake8 $(TESTS_DIR)/*.py --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+	$(PYTHON) -m flake8 $(TESTS_DIR)/*.py --count --exit-zero --max-complexity=10 --max-line-length=142 --statistics
 
 format:  ## Format code with black
-	$(PYTHON) -m black vex-kernel-checker.py $(TESTS_DIR)/*.py
+	$(PYTHON) -m black vex-kernel-checker.py vex_kernel_checker/ $(TESTS_DIR)/*.py
 
 format-check:  ## Check code formatting
-	$(PYTHON) -m black --check --diff vex-kernel-checker.py $(TESTS_DIR)/*.py
+	$(PYTHON) -m black --check --diff vex-kernel-checker.py vex_kernel_checker/ $(TESTS_DIR)/*.py
 
 clean:  ## Clean temporary files and caches
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true

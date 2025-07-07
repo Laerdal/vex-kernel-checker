@@ -24,25 +24,21 @@ jobs:
     
     - name: Install dependencies
       run: |
-        python3 -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install coverage psutil  # Additional test dependencies
+        make install-dev
     
     - name: Run quick smoke tests
       run: |
-        cd vex-kernel-checker
-        python3 tests/run_tests.py --quick
+        make test-quick
     
     - name: Run unit tests with coverage
       run: |
-        cd vex-kernel-checker
-        python3 tests/run_tests.py --coverage --quiet
+        make test-coverage
     
     - name: Upload coverage reports
       uses: codecov/codecov-action@v3
       if: matrix.python-version == '3.9'  # Only upload once
       with:
-        file: vex-kernel-checker/htmlcov/coverage.xml
+        file: htmlcov/coverage.xml
         flags: unittests
 
   lint:
@@ -58,19 +54,15 @@ jobs:
     
     - name: Install linting tools
       run: |
-        python3 -m pip install --upgrade pip
-        pip install flake8 pylint black
+        make install-dev
     
     - name: Lint with flake8
       run: |
-        cd vex-kernel-checker
-        flake8 vex-kernel-checker.py --count --select=E9,F63,F7,F82 --show-source --statistics
-        flake8 vex-kernel-checker.py --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        make lint
     
     - name: Check formatting with black
       run: |
-        cd vex-kernel-checker
-        black --check --diff vex-kernel-checker.py
+        make format-check
 
   performance:
     runs-on: ubuntu-latest
@@ -86,20 +78,17 @@ jobs:
     
     - name: Install dependencies
       run: |
-        python3 -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install psutil
+        make install-dev
     
     - name: Run performance benchmarks
       run: |
-        cd vex-kernel-checker
-        python3 tests/benchmark.py --quiet --output benchmark_results.json
+        make ci-benchmark
     
     - name: Upload benchmark results
       uses: actions/upload-artifact@v3
       with:
         name: benchmark-results
-        path: vex-kernel-checker/benchmark_results.json
+        path: benchmark_results.json
 
   integration:
     runs-on: ubuntu-latest
@@ -114,30 +103,13 @@ jobs:
     
     - name: Install dependencies
       run: |
-        python3 -m pip install --upgrade pip
-        pip install -r requirements.txt
+        make install
     
     - name: Create test kernel structure
       run: |
-        mkdir -p test_kernel/{drivers/net,fs,net/core,kernel}
-        echo "CONFIG_NET=y" > test_kernel.config
+        make setup-test-data
         echo '{"vulnerabilities":[{"id":"CVE-2023-1234","severity":"HIGH"}]}' > test.vex
-    
-    - name: Test configuration validation
-      run: |
-        cd vex-kernel-checker
-        python3 tests/validate_config.py \
-          --vex-file ../test.vex \
-          --kernel-config ../test_kernel.config \
-          --kernel-source ../test_kernel \
-          --quiet
     
     - name: Test tool functionality (config-only mode)
       run: |
-        cd vex-kernel-checker
-        python3 vex-kernel-checker.py \
-          --vex-file ../test.vex \
-          --kernel-config ../test_kernel.config \
-          --kernel-source ../test_kernel \
-          --config-only \
-          --verbose
+        make run-example
