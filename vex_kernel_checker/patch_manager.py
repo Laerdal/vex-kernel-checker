@@ -529,3 +529,131 @@ class PatchManager(VexKernelCheckerBase):
                 print(f'Found config option in patch: {match}')
 
         return config_options
+
+    @timed_method
+    def check_patch_presence(self, patch_content: str, kernel_source_path: str) -> bool:
+        """
+        Check if a security patch is already applied to the kernel source.
+        
+        Args:
+            patch_content: The patch content (diff format)
+            kernel_source_path: Path to the kernel source directory
+            
+        Returns:
+            True if patch appears to be already applied, False if not applied
+        """
+        import os
+        
+        if not patch_content or not kernel_source_path:
+            return False
+            
+        if not os.path.exists(kernel_source_path):
+            if self.verbose:
+                print(f"Kernel source path does not exist: {kernel_source_path}")
+            return False
+        
+        # Extract the file changes from the patch
+        patch_files = self._extract_patch_file_changes(patch_content)
+        
+        if not patch_files:
+            if self.verbose:
+                print("No file changes found in patch content")
+            return False
+            
+        applied_count = 0
+        total_count = 0
+        
+        for file_path, changes in patch_files.items():
+            total_count += 1
+            full_file_path = os.path.join(kernel_source_path, file_path)
+            
+            if not os.path.exists(full_file_path):
+                if self.verbose:
+                    print(f"File not found in kernel source: {file_path}")
+                continue
+                
+            try:
+                with open(full_file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    file_content = f.read()
+                    
+                if self._check_changes_applied(file_content, changes):
+                    applied_count += 1
+                    if self.verbose:
+                        print(f"✓ Patch changes appear applied in {file_path}")
+                else:
+                    if self.verbose:
+                        print(f"✗ Patch changes NOT applied in {file_path}")
+                        
+            except Exception as e:
+                if self.verbose:
+                    print(f"Error reading file {file_path}: {e}")
+                continue
+        
+        # Consider patch applied if most files show the changes
+        if total_count == 0:
+            return False
+            
+        applied_ratio = applied_count / total_count
+        is_applied = applied_ratio >= 0.5  # At least 50% of files show patch applied
+        
+        if self.verbose:
+            print(f"Patch presence check: {applied_count}/{total_count} files show patch applied ({applied_ratio:.1%})")
+            print(f"Patch considered {'APPLIED' if is_applied else 'NOT APPLIED'}")
+            
+        return is_applied
+    
+    def _extract_patch_file_changes(self, patch_content: str) -> dict:
+        """
+        Extract file changes from patch content.
+        
+        Returns:
+            Dict mapping file paths to lists of added lines
+        """
+        import re
+        
+        file_changes = {}
+        current_file = None
+        
+        lines = patch_content.split('\n')
+        for line in lines:
+            # Look for file headers
+            if line.startswith('--- a/') or line.startswith('+++ b/'):
+                if line.startswith('+++ b/'):
+                    # Extract file path
+                    current_file = line[6:].strip()
+                    if current_file and not current_file.startswith('/dev/null'):
+                        file_changes[current_file] = []
+                        
+            # Look for added lines (security fixes)
+            elif line.startswith('+') and current_file and not line.startswith('+++'):
+                # Skip lines that are just additions of whitespace or comments
+                stripped_line = line[1:].strip()
+                if stripped_line and not stripped_line.startswith('//') and not stripped_line.startswith('/*'):
+                    file_changes[current_file].append(stripped_line)
+                    
+        return file_changes
+    
+    def _check_changes_applied(self, file_content: str, added_lines: list) -> bool:
+        """
+        Check if the added lines from a patch are present in the file content.
+        
+        Args:
+            file_content: Content of the source file
+            added_lines: List of lines that were added by the patch
+            
+        Returns:
+            True if most added lines are found in the file
+        """
+        if not added_lines:
+            return True  # No changes to check
+            
+        found_count = 0
+        for line in added_lines:
+            # Look for the essence of the line (ignoring exact whitespace)
+            line_essence = ' '.join(line.split())
+            if line_essence and line_essence in file_content:
+                found_count += 1
+                
+        # Consider applied if at least 70% of added lines are found
+        found_ratio = found_count / len(added_lines) if added_lines else 0
+        return found_ratio >= 0.7
