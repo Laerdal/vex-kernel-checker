@@ -609,6 +609,39 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
         config_options = set()
 
         try:
+            # Extract the source filename for direct Makefile pattern matching
+            source_filename = os.path.basename(source_file_path)
+            source_dirname = os.path.dirname(source_file_path)
+            
+            # First, try direct extraction from Makefile in the same directory
+            if source_file_path.endswith('.c'):
+                # Find Makefile in source file directory
+                makefile_dir = os.path.join(kernel_source_path, source_dirname)
+                makefile_path = os.path.join(makefile_dir, 'Makefile')
+                
+                # Try to find direct CONFIG matches from Makefile
+                if os.path.exists(makefile_path):
+                    direct_configs = self.extract_configs_by_source_filename(
+                        makefile_path, source_filename
+                    )
+                    if direct_configs:
+                        config_options.update(direct_configs)
+                        if self.verbose:
+                            print(f"Direct Makefile analysis found configs for {source_filename}: {', '.join(direct_configs)}")
+                
+                # Also check if the file is a full path that already includes kernel_source_path
+                if os.path.isabs(source_file_path) and os.path.exists(source_file_path):
+                    alternate_makefile_dir = os.path.dirname(source_file_path)
+                    alternate_makefile_path = os.path.join(alternate_makefile_dir, 'Makefile')
+                    if os.path.exists(alternate_makefile_path) and alternate_makefile_path != makefile_path:
+                        alternate_configs = self.extract_configs_by_source_filename(
+                            alternate_makefile_path, source_filename
+                        )
+                        if alternate_configs:
+                            config_options.update(alternate_configs)
+                            if self.verbose:
+                                print(f"Alternate Makefile analysis found configs for {source_filename}: {', '.join(alternate_configs)}")
+            
             # Use existing method to find config options via Makefiles
             makefile_configs = self.find_makefiles_config_options(
                 source_file_path, kernel_source_path
@@ -641,3 +674,141 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
                 print(f'Error analyzing {source_file_path}: {e}')
 
         return config_options
+
+    def extract_configs_by_source_filename(self, makefile_path: str, source_filename: str) -> Set[str]:
+        """
+        Extract CONFIG options specifically for a given source file directly from a Makefile.
+        This targets patterns like 'obj-$(CONFIG_USB_LAN78XX) += lan78xx.o' to find exact config matches.
+        
+        Args:
+            makefile_path: Path to the Makefile
+            source_filename: Source filename without path (e.g., 'lan78xx.c')
+            
+        Returns:
+            Set of CONFIG options directly associated with the source file
+        """
+        if not os.path.exists(makefile_path):
+            return set()
+            
+        # Convert source filename to object filename for Makefile matching
+        obj_filename = source_filename.replace('.c', '.o')
+        base_name = os.path.splitext(source_filename)[0]  # Get filename without extension
+        configs = set()
+        
+        try:
+            content = self._get_cached_file_content(makefile_path)
+            
+            # Direct pattern for obj-$(CONFIG_XXX) += filename.o
+            direct_patterns = [
+                # Match obj-$(CONFIG_XXX) += filename.o
+                re.compile(r'obj-\$\((CONFIG_[A-Z0-9_]+)\)\s*\+=\s*' + re.escape(obj_filename) + r'\b'),
+                # Match obj-$(CONFIG_XXX) += filename (without .o)
+                re.compile(r'obj-\$\((CONFIG_[A-Z0-9_]+)\)\s*\+=\s*' + re.escape(base_name) + r'\b'),
+                # Match filename-objs-$(CONFIG_XXX) pattern
+                re.compile(re.escape(base_name) + r'-objs-\$\((CONFIG_[A-Z0-9_]+)\)'),
+                # Match filename-y (may be inside ifdef CONFIG_XXX block)
+                re.compile(re.escape(base_name) + r'-y'),
+                # Match multi-file driver patterns where filename is added to a variable
+                re.compile(r'([a-zA-Z0-9_]+)-y.*' + re.escape(obj_filename)),
+                re.compile(r'([a-zA-Z0-9_]+)-objs.*' + re.escape(obj_filename)),
+            ]
+            
+            # Also look for patterns where filename is in a list 
+            # e.g., module-objs := file1.o file2.o our_file.o file3.o
+            list_pattern = re.compile(r'([a-zA-Z0-9_]+)(?:-y|-objs|-m).*' + re.escape(obj_filename))
+            
+            lines = content.split('\n')
+            in_config_block = None
+            driver_vars = {}  # Track variables that might be tied to CONFIG options
+            
+            for line in lines:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                
+                # Track config blocks (ifdef CONFIG_XXX)
+                if line.startswith('ifdef CONFIG_') or line.startswith('ifeq ($(CONFIG_'):
+                    config_match = re.search(r'(CONFIG_[A-Z0-9_]+)', line)
+                    if config_match:
+                        in_config_block = config_match.group(1)
+                elif line.startswith('endif') or line.startswith('else'):
+                    in_config_block = None
+                
+                # Look for direct patterns
+                for pattern in direct_patterns:
+                    matches = pattern.search(line)
+                    if matches:
+                        if len(matches.groups()) > 0 and matches.group(1).startswith('CONFIG_'):
+                            configs.add(matches.group(1))
+                        elif in_config_block:  # If inside a config block and we have a filename-y match
+                            configs.add(in_config_block)
+                        elif len(matches.groups()) > 0:
+                            # Might be a variable name that will be tied to a CONFIG later
+                            driver_vars[matches.group(1)] = True
+                
+                # Look for list patterns
+                list_match = list_pattern.search(line)
+                if list_match and list_match.group(1) not in driver_vars:
+                    driver_vars[list_match.group(1)] = True
+                
+                # Handle obj-y += filename.o inside CONFIG_XXX block
+                if in_config_block and obj_filename in line and ('obj-y' in line or 'obj-$(y)' in line):
+                    configs.add(in_config_block)
+                
+                # Check for driver variables tied to configs
+                # e.g., obj-$(CONFIG_XXX) += module_name
+                for var_name in driver_vars:
+                    var_pattern = re.compile(r'obj-\$\((CONFIG_[A-Z0-9_]+)\)\s*\+=\s*' + re.escape(var_name) + r'\b')
+                    var_match = var_pattern.search(line)
+                    if var_match:
+                        configs.add(var_match.group(1))
+            
+            # If no direct match found, check Kconfig in the same directory
+            if not configs:
+                kconfig_path = os.path.join(os.path.dirname(makefile_path), 'Kconfig')
+                if os.path.exists(kconfig_path):
+                    # Look for references to the source file in Kconfig
+                    kconfig_content = self._get_cached_file_content(kconfig_path)
+                    # Extract from Kconfig by looking for sections mentioning our file
+                    # Common patterns include tristate "Driver for XXX devices" entries
+                    # Try to find the CONFIG_XXX declaration close to mentions of our driver's name
+                    source_base = os.path.splitext(os.path.basename(source_filename))[0]
+                    
+                    # Look for config entries that mention our driver
+                    config_entries = re.finditer(r'config\s+(USB_[A-Z0-9_]+).*?(?:endmenu|config\s+|\Z)', 
+                                               kconfig_content, re.DOTALL)
+                    
+                    for entry in config_entries:
+                        config_name = entry.group(1)
+                        config_block = entry.group(0)
+                        
+                        # If the driver name appears in the config block description, it's likely related
+                        # Be careful with very generic names like "usb" that might cause false positives
+                        if len(source_base) > 3 and source_base.lower() in config_block.lower():
+                            configs.add(f"CONFIG_{config_name}")
+            
+            # If still no configs, try a more aggressive fallback using the driver subsystem
+            if not configs and 'usb' in makefile_path.lower():
+                # For USB drivers, try to determine the config based on file location
+                if 'net/usb' in makefile_path:
+                    # It's a USB network driver, check for USB_NET prefix
+                    configs.add(f"CONFIG_USB_{base_name.upper()}")
+                    
+                    # Also add the generic USB_NET_DRIVERS as a fallback
+                    configs.add("CONFIG_USB_NET_DRIVERS")
+            
+            # Additional intelligence for specific subsystems
+            if 'drivers/gpu/drm' in makefile_path:
+                # Graphics drivers
+                configs.add(f"CONFIG_DRM_{base_name.upper()}")
+            elif 'drivers/net/wireless' in makefile_path:
+                # Wireless drivers
+                configs.add("CONFIG_WLAN")
+                configs.add("CONFIG_CFG80211")
+            
+            return configs
+            
+        except Exception as e:
+            if self.verbose:
+                print(f"Error extracting configs from {makefile_path} for {source_filename}: {e}")
+            return set()
