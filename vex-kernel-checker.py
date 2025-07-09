@@ -76,7 +76,18 @@ def load_config_file(config_path: str) -> Dict:
             for key, value in json_config.items():
                 # Convert underscores to hyphens for CLI compatibility
                 cli_key = key.replace('_', '-')
-                config[cli_key] = value
+                
+                # Expand paths for file/directory related options
+                if cli_key in ['vex-file', 'kernel-config', 'kernel-source', 'output', 'log-file', 'edge-driver']:
+                    # Expand user home directory (~) and convert to absolute path
+                    expanded_value = os.path.expanduser(str(value))
+                    # Convert relative paths to absolute (relative to config file location)
+                    if not os.path.isabs(expanded_value):
+                        config_dir = os.path.dirname(os.path.abspath(config_path))
+                        expanded_value = os.path.join(config_dir, expanded_value)
+                    config[cli_key] = expanded_value
+                else:
+                    config[cli_key] = value
                 
         elif ext in ['.ini', '.cfg', '.config']:
             # INI format
@@ -96,7 +107,17 @@ def load_config_file(config_path: str) -> Dict:
                 elif value.lower() in ['false', 'no', '0', 'off']:
                     config[cli_key] = False
                 else:
-                    config[cli_key] = value
+                    # Expand paths for file/directory related options
+                    if cli_key in ['vex-file', 'kernel-config', 'kernel-source', 'output', 'log-file', 'edge-driver']:
+                        # Expand user home directory (~) and convert to absolute path
+                        expanded_value = os.path.expanduser(value)
+                        # Convert relative paths to absolute (relative to config file location)
+                        if not os.path.isabs(expanded_value):
+                            config_dir = os.path.dirname(os.path.abspath(config_path))
+                            expanded_value = os.path.join(config_dir, expanded_value)
+                        config[cli_key] = expanded_value
+                    else:
+                        config[cli_key] = value
                     
         else:
             print(f'Error: Unsupported configuration file format: {ext}')
