@@ -117,6 +117,15 @@ python3 vex-kernel-checker.py \
   --kernel-source /lib/modules/$(uname -r)/build
 ```
 
+### Using Configuration Files (Recommended)
+```bash
+# Create a configuration file
+python3 vex-kernel-checker.py --create-config my-config.ini
+
+# Edit the file with your settings, then run
+python3 vex-kernel-checker.py --config my-config.ini
+```
+
 ### Full Analysis (with patch checking)
 ```bash
 python3 vex-kernel-checker.py \
@@ -126,6 +135,19 @@ python3 vex-kernel-checker.py \
   --api-key YOUR_NVD_API_KEY \
   --edge-driver /path/to/msedgedriver \
   --verbose
+```
+
+### Using Configuration Files
+```bash
+# Create a sample configuration file
+python3 vex-kernel-checker.py --create-config my-config.ini
+
+# Edit the configuration file with your settings
+# Then run with the configuration file
+python3 vex-kernel-checker.py --config my-config.ini
+
+# Override config file settings with command-line arguments
+python3 vex-kernel-checker.py --config my-config.ini --verbose --reanalyse
 ```
 
 ### Re-analyze Existing Results
@@ -142,9 +164,12 @@ python3 vex-kernel-checker.py \
 
 | Option | Description | Required |
 |--------|-------------|----------|
-| `--vex-file` | Path to VEX JSON file | ✅ |
-| `--kernel-config` | Path to kernel config file (.config) | ✅ |
-| `--kernel-source` | Path to kernel source directory | ✅ |
+| `--config` | Path to configuration file (.ini, .json, .cfg, .config) | ❌ |
+| `--create-config` | Create a sample configuration file and exit | ❌ |
+| `--config-format` | Format for created config file (ini/json) | ❌ |
+| `--vex-file` | Path to VEX JSON file | ✅* |
+| `--kernel-config` | Path to kernel config file (.config) | ✅* |
+| `--kernel-source` | Path to kernel source directory | ✅* |
 | `--output` | Output file path (default: update in place) | ❌ |
 | `--reanalyse` | Re-analyze CVEs with existing analysis | ❌ |
 | `--cve-id` | Process only specific CVE ID | ❌ |
@@ -155,6 +180,79 @@ python3 vex-kernel-checker.py \
 | `--clear-cache` | Clear all internal caches | ❌ |
 | `--performance-stats` | Show detailed performance metrics | ❌ |
 | `--analyze-all-cves` | Analyze all CVEs (default: kernel-related only) | ❌ |
+
+**Note:** Options marked with ✅* are required unless provided in a configuration file.
+
+## Configuration Files
+
+The VEX Kernel Checker supports configuration files to simplify usage by storing commonly used settings. This is particularly useful for repeated analysis with the same parameters.
+
+### Supported Formats
+
+- **INI format** (`.ini`, `.cfg`, `.config`) - Human-readable with section headers
+- **JSON format** (`.json`) - Machine-readable structured format
+
+### Creating Configuration Files
+
+```bash
+# Create a sample INI configuration file
+python3 vex-kernel-checker.py --create-config my-config.ini
+
+# Create a sample JSON configuration file  
+python3 vex-kernel-checker.py --create-config my-config.json --config-format json
+```
+
+### Configuration File Examples
+
+**INI Format (`my-config.ini`):**
+```ini
+[vex-kernel-checker]
+vex_file = /path/to/vulnerabilities.json
+kernel_config = /path/to/.config
+kernel_source = /path/to/kernel/source
+api_key = your-nvd-api-key
+edge_driver = /usr/bin/msedgedriver
+verbose = true
+performance_stats = true
+```
+
+**JSON Format (`my-config.json`):**
+```json
+{
+  "vex_file": "/path/to/vulnerabilities.json",
+  "kernel_config": "/path/to/.config", 
+  "kernel_source": "/path/to/kernel/source",
+  "api_key": "your-nvd-api-key",
+  "edge_driver": "/usr/bin/msedgedriver",
+  "verbose": true,
+  "performance_stats": true
+}
+```
+
+### Using Configuration Files
+
+```bash
+# Use configuration file
+python3 vex-kernel-checker.py --config my-config.ini
+
+# Override config settings with command-line arguments
+python3 vex-kernel-checker.py --config my-config.ini --verbose --reanalyse
+
+# Mix configuration file with additional options
+python3 vex-kernel-checker.py --config my-config.ini --cve-id CVE-2023-1234
+```
+
+### Configuration Priority
+
+Command-line arguments take precedence over configuration file settings, allowing you to override specific options while keeping others from the config file.
+
+### Sample Configuration Files
+
+The `examples/` directory contains sample configuration files:
+- `examples/sample-config.ini` - Basic INI format example
+- `examples/sample-config.json` - Basic JSON format example  
+- `examples/production-config.ini` - Comprehensive production example
+````markdown
 
 ## Analysis Methods
 

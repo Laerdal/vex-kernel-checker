@@ -1,0 +1,17 @@
+{
+  "vex_file": "/path/to/your/vex-file.json",
+  "kernel_config": "/path/to/your/.config",
+  "kernel_source": "/path/to/your/kernel/source",
+  "output": "",
+  "log_file": "",
+  "api_key": "your-nvd-api-key-here",
+  "edge_driver": "/usr/bin/msedgedriver",
+  "cve_id": "",
+  "verbose": true,
+  "reanalyse": false,
+  "config_only": false,
+  "analyze_all_cves": false,
+  "performance_stats": true,
+  "detailed_timing": false,
+  "clear_cache": false
+}

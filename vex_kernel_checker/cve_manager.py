@@ -235,6 +235,13 @@ class CVEDataManager(VexKernelCheckerBase):
             if 'github.com' in url:
                 return url
 
+        alternative_urls = self.get_alternative_patch_urls(cve_info.patch_urls[0])
+        if alternative_urls:
+            # Return the first non-ignored alternative URL
+            for url in alternative_urls:
+                if not self._url_ignored(url):
+                    return url
+
         # Then try kernel.org URLs
         for url in cve_info.patch_urls:
             if self._url_ignored(url):

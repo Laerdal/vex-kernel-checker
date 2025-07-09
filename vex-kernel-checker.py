@@ -11,6 +11,8 @@ MIT License - See LICENSE file for details.
 # flake8: noqa: SC200
 
 import argparse
+import configparser
+import json
 import os
 import sys
 import time
@@ -26,21 +28,220 @@ from vex_kernel_checker import (  # noqa: E402
     VexKernelCheckerBase,
 )
 
+import logging
+
+def setup_logging(verbose: bool, log_file: Optional[str] = None):
+    """Setup structured logging."""
+    level = logging.DEBUG if verbose else logging.INFO
+    format_str = '%(asctime)s - %(levelname)s - %(message)s'
+    
+    handlers = [logging.StreamHandler()]
+    if log_file:
+        handlers.append(logging.FileHandler(log_file))
+    
+    logging.basicConfig(level=level, format=format_str, handlers=handlers)
+
+
+def load_config_file(config_path: str) -> Dict:
+    """
+    Load configuration from file.
+    
+    Supports both INI format (.ini, .cfg, .config) and JSON format (.json).
+    
+    Args:
+        config_path: Path to configuration file
+        
+    Returns:
+        Dictionary containing configuration options
+        
+    Raises:
+        SystemExit: If configuration file cannot be loaded or parsed
+    """
+    if not os.path.exists(config_path):
+        print(f'Error: Configuration file not found: {config_path}')
+        sys.exit(1)
+    
+    config = {}
+    
+    try:
+        # Determine file format based on extension
+        _, ext = os.path.splitext(config_path.lower())
+        
+        if ext == '.json':
+            # JSON format
+            with open(config_path, 'r', encoding='utf-8') as f:
+                json_config = json.load(f)
+                
+            # Flatten the JSON structure to match command-line arguments
+            for key, value in json_config.items():
+                # Convert underscores to hyphens for CLI compatibility
+                cli_key = key.replace('_', '-')
+                config[cli_key] = value
+                
+        elif ext in ['.ini', '.cfg', '.config']:
+            # INI format
+            parser = configparser.ConfigParser()
+            parser.read(config_path)
+            
+            # Use the 'vex-kernel-checker' section if it exists, otherwise use DEFAULT
+            section_name = 'vex-kernel-checker' if 'vex-kernel-checker' in parser else 'DEFAULT'
+            
+            for key, value in parser[section_name].items():
+                # Convert underscores to hyphens for CLI compatibility
+                cli_key = key.replace('_', '-')
+                
+                # Handle boolean values
+                if value.lower() in ['true', 'yes', '1', 'on']:
+                    config[cli_key] = True
+                elif value.lower() in ['false', 'no', '0', 'off']:
+                    config[cli_key] = False
+                else:
+                    config[cli_key] = value
+                    
+        else:
+            print(f'Error: Unsupported configuration file format: {ext}')
+            print('Supported formats: .json, .ini, .cfg, .config')
+            sys.exit(1)
+            
+    except json.JSONDecodeError as e:
+        print(f'Error parsing JSON configuration file: {e}')
+        sys.exit(1)
+    except configparser.Error as e:
+        print(f'Error parsing INI configuration file: {e}')
+        sys.exit(1)
+    except Exception as e:
+        print(f'Error loading configuration file: {e}')
+        sys.exit(1)
+    
+    return config
+
+
+def merge_config_with_args(config: Dict, args: argparse.Namespace) -> argparse.Namespace:
+    """
+    Merge configuration file values with command-line arguments.
+    
+    Command-line arguments take precedence over configuration file values.
+    
+    Args:
+        config: Configuration dictionary from file
+        args: Parsed command-line arguments
+        
+    Returns:
+        Updated argument namespace
+    """
+    # Create a copy of args to avoid modifying the original
+    merged_args = argparse.Namespace(**vars(args))
+    
+    # Only apply config values if the command-line argument is not set
+    for key, value in config.items():
+        # Convert hyphens to underscores for attribute access
+        attr_key = key.replace('-', '_')
+        
+        # Skip if the attribute doesn't exist on args (invalid config option)
+        if not hasattr(merged_args, attr_key):
+            print(f'Warning: Unknown configuration option: {key}')
+            continue
+            
+        # Only use config value if command-line argument is not set/is default
+        current_value = getattr(merged_args, attr_key)
+        
+        # For boolean flags, only set if current value is False
+        if isinstance(current_value, bool):
+            if not current_value and value:
+                setattr(merged_args, attr_key, value)
+        # For other values, only set if current value is None or empty
+        elif current_value is None or current_value == '':
+            setattr(merged_args, attr_key, value)
+    
+    return merged_args
+
+
+def create_sample_config_file(config_path: str, format_type: str = 'ini') -> None:
+    """
+    Create a sample configuration file to help users get started.
+    
+    Args:
+        config_path: Path where to create the sample config file
+        format_type: Format type ('ini' or 'json')
+    """
+    if format_type == 'json':
+        sample_config = {
+            "vex_file": "/path/to/your/vex-file.json",
+            "kernel_config": "/path/to/your/.config", 
+            "kernel_source": "/path/to/your/kernel/source",
+            "api_key": "your-nvd-api-key",
+            "edge_driver": "/path/to/msedgedriver",
+            "verbose": True,
+            "reanalyse": False,
+            "config_only": False,
+            "analyze_all_cves": False,
+            "performance_stats": True,
+            "detailed_timing": False,
+            "clear_cache": False
+        }
+        
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(sample_config, f, indent=2)
+            
+    else:  # INI format
+        sample_config = """[vex-kernel-checker]
+# Required arguments
+vex_file = /path/to/your/vex-file.json
+kernel_config = /path/to/your/.config
+kernel_source = /path/to/your/kernel/source
+
+# Optional arguments
+output = 
+log_file = 
+api_key = your-nvd-api-key
+edge_driver = /path/to/msedgedriver
+cve_id = 
+
+# Boolean flags (true/false)
+verbose = true
+reanalyse = false
+config_only = false
+analyze_all_cves = false
+performance_stats = true
+detailed_timing = false
+clear_cache = false
+"""
+        
+        with open(config_path, 'w', encoding='utf-8') as f:
+            f.write(sample_config)
+    
+    print(f'Sample configuration file created: {config_path}')
+    print(f'Please edit this file with your specific settings.')
+
 
 def validate_input_files(args) -> bool:
     """Validate that all required input files exist."""
-    if not os.path.exists(args.vex_file):
-        print(f'Error: VEX file not found: {args.vex_file}')
+    # Check if required arguments are provided
+    if not args.vex_file:
+        print('Error: --vex-file is required')
         return False
-
-    if not os.path.exists(args.kernel_config):
-        print(f'Error: Kernel config file not found: {args.kernel_config}')
+    if not args.kernel_config:
+        print('Error: --kernel-config is required')
         return False
-
-    if not os.path.exists(args.kernel_source):
-        print(f'Error: Kernel source directory not found: {args.kernel_source}')
+    if not args.kernel_source:
+        print('Error: --kernel-source is required')
         return False
-
+    
+    validations = [
+        (args.vex_file, "VEX file"),
+        (args.kernel_config, "Kernel config file"),
+        (args.kernel_source, "Kernel source directory")
+    ]
+    
+    for file_path, description in validations:
+        if not os.path.exists(file_path):
+            print(f'Error: {description} not found: {file_path}')
+            return False
+    
+    # Additional validation for file types/formats
+    if not args.vex_file.endswith(('.json', '.cdx')):
+        print(f'Warning: VEX file should be JSON or CDX format: {args.vex_file}')
+    
     return True
 
 
@@ -93,18 +294,37 @@ def setup_argument_parser() -> argparse.ArgumentParser:
         description=(
             'VEX Kernel Checker - Analyze CVE vulnerabilities against kernel configurations\n\n'
             'By default, only processes CVEs that do not have an existing analysis. '
-            'Use --reanalyse to re-analyze CVEs that already have results.'
+            'Use --reanalyse to re-analyze CVEs that already have results.\n\n'
+            'Configuration files can be used to store commonly used options.\n'
+            'Supported formats: .json, .ini, .cfg, .config'
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
-    # Required arguments
-    parser.add_argument('--vex-file', required=True, help='Path to VEX JSON file')
-    parser.add_argument('--kernel-config', required=True, help='Path to kernel config file (.config)')
-    parser.add_argument('--kernel-source', required=True, help='Path to kernel source directory')
+    # Configuration file options
+    parser.add_argument(
+        '--config', 
+        help='Path to configuration file (supports .json, .ini, .cfg, .config formats)'
+    )
+    parser.add_argument(
+        '--create-config',
+        help='Create a sample configuration file at the specified path and exit'
+    )
+    parser.add_argument(
+        '--config-format',
+        choices=['ini', 'json'],
+        default='ini',
+        help='Format for created configuration file (default: ini)'
+    )
+
+    # Required arguments (can be provided via config file)
+    parser.add_argument('--vex-file', help='Path to VEX JSON file')
+    parser.add_argument('--kernel-config', help='Path to kernel config file (.config)')
+    parser.add_argument('--kernel-source', help='Path to kernel source directory')
 
     # Optional arguments
     parser.add_argument('--output', help='Output file path (default: update VEX file in place)')
+    parser.add_argument('--log-file', help='Log file path (default: no logging)')
     parser.add_argument(
         '--reanalyse',
         action='store_true',
@@ -287,9 +507,30 @@ def run_analysis_workflow(args, output_file, perf_tracker):
 
 def main() -> int:
     """Entry point for the VEX Kernel Checker CLI."""
+    
     # Parse arguments
     parser = setup_argument_parser()
     args = parser.parse_args()
+
+    # Handle configuration file creation
+    if args.create_config:
+        create_sample_config_file(args.create_config, args.config_format)
+        return 0
+
+    # Load configuration file if specified
+    config = {}
+    if args.config:
+        if args.verbose:
+            print(f'Loading configuration from: {args.config}')
+        config = load_config_file(args.config)
+        
+        # Merge configuration with command-line arguments
+        args = merge_config_with_args(config, args)
+        
+        if args.verbose:
+            print('Configuration loaded and merged with command-line arguments')
+
+    setup_logging(args.verbose, args.log_file)
 
     # Validate input files
     if not validate_input_files(args):

@@ -629,19 +629,37 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
                         if self.verbose:
                             print(f"Direct Makefile analysis found configs for {source_filename}: {', '.join(direct_configs)}")
                 
-                # Also check if the file is a full path that already includes kernel_source_path
-                if os.path.isabs(source_file_path) and os.path.exists(source_file_path):
-                    alternate_makefile_dir = os.path.dirname(source_file_path)
-                    alternate_makefile_path = os.path.join(alternate_makefile_dir, 'Makefile')
-                    if os.path.exists(alternate_makefile_path) and alternate_makefile_path != makefile_path:
-                        alternate_configs = self.extract_configs_by_source_filename(
-                            alternate_makefile_path, source_filename
-                        )
-                        if alternate_configs:
-                            config_options.update(alternate_configs)
-                            if self.verbose:
-                                print(f"Alternate Makefile analysis found configs for {source_filename}: {', '.join(alternate_configs)}")
+                # Also search by folder name patterns
+                folder_configs = self.extract_configs_by_folder_name(
+                    makefile_path, source_dirname
+                )
+                if folder_configs:
+                    config_options.update(folder_configs)
+                    if self.verbose:
+                        print(f"Folder-based analysis found configs for {source_dirname}: {', '.join(folder_configs)}")
             
+            # Also check if the file is a full path that already includes kernel_source_path
+            if os.path.isabs(source_file_path) and os.path.exists(source_file_path):
+                alternate_makefile_dir = os.path.dirname(source_file_path)
+                alternate_makefile_path = os.path.join(alternate_makefile_dir, 'Makefile')
+                if os.path.exists(alternate_makefile_path) and alternate_makefile_path != makefile_path:
+                    alternate_configs = self.extract_configs_by_source_filename(
+                        alternate_makefile_path, source_filename
+                    )
+                    if alternate_configs:
+                        config_options.update(alternate_configs)
+                        if self.verbose:
+                            print(f"Alternate Makefile analysis found configs for {source_filename}: {', '.join(alternate_configs)}")
+                    
+                    # Also search by folder name in alternate path
+                    alternate_folder_configs = self.extract_configs_by_folder_name(
+                        alternate_makefile_path, os.path.dirname(source_file_path)
+                    )
+                    if alternate_folder_configs:
+                        config_options.update(alternate_folder_configs)
+                        if self.verbose:
+                            print(f"Alternate folder-based analysis found configs: {', '.join(alternate_folder_configs)}")
+        
             # Use existing method to find config options via Makefiles
             makefile_configs = self.find_makefiles_config_options(
                 source_file_path, kernel_source_path
@@ -664,9 +682,15 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
                     )
                     config_options.update(makefile_configs)
 
+            # Add folder-based heuristic analysis
+            folder_heuristic_configs = self._extract_configs_by_folder_heuristics(
+                source_file_path, kernel_source_path
+            )
+            config_options.update(folder_heuristic_configs)
+
             if self.verbose and config_options:
                 print(
-                    f'Found {len(config_options)} config options for {source_file_path}: {', '.join(sorted(config_options))}'
+                    f'Found {len(config_options)} config options for {source_file_path}: {", ".join(sorted(config_options))}'
                 )
 
         except Exception as e:
@@ -811,4 +835,230 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
         except Exception as e:
             if self.verbose:
                 print(f"Error extracting configs from {makefile_path} for {source_filename}: {e}")
+            return set()
+
+    def extract_configs_by_folder_name(self, makefile_path: str, folder_path: str) -> Set[str]:
+        """
+        Extract CONFIG options based on folder name patterns in Makefile.
+    
+        Args:
+            makefile_path: Path to the Makefile
+            folder_path: Relative folder path from kernel source
+        
+        Returns:
+            Set of CONFIG options related to the folder
+        """
+        if not os.path.exists(makefile_path):
+            return set()
+        
+        configs = set()
+        
+        try:
+            content = self._get_cached_file_content(makefile_path)
+            
+            # Extract folder components for matching
+            folder_parts = folder_path.split('/')
+            folder_name = os.path.basename(folder_path)
+            
+            # Patterns to match folder-based configs
+            folder_patterns = [
+                # obj-$(CONFIG_XXX) += folder_name/
+                re.compile(r'obj-\$\((CONFIG_[A-Z0-9_]+)\)\s*\+=\s*' + re.escape(folder_name) + r'/'),
+                # obj-$(CONFIG_XXX) += folder_name
+                re.compile(r'obj-\$\((CONFIG_[A-Z0-9_]+)\)\s*\+=\s*' + re.escape(folder_name) + r'\s*$'),
+                # subdirs-$(CONFIG_XXX) += folder_name
+                re.compile(r'subdirs-\$\((CONFIG_[A-Z0-9_]+)\)\s*\+=\s*' + re.escape(folder_name)),
+                # subdir-$(CONFIG_XXX) += folder_name
+                re.compile(r'subdir-\$\((CONFIG_[A-Z0-9_]+)\)\s*\+=\s*' + re.escape(folder_name)),
+            ]
+            
+            # Also check for patterns that might include the full relative path
+            for part in folder_parts:
+                if part and len(part) > 2:  # Skip very short folder names
+                    folder_patterns.extend([
+                        re.compile(r'obj-\$\((CONFIG_[A-Z0-9_]+)\)\s*\+=\s*' + re.escape(part) + r'/'),
+                        re.compile(r'obj-\$\((CONFIG_[A-Z0-9_]+)\)\s*\+=\s*' + re.escape(part) + r'\s*$'),
+                    ])
+            
+            lines = content.split('\n')
+            
+            for line in lines:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                    
+                # Check all folder patterns
+                for pattern in folder_patterns:
+                    matches = pattern.search(line)
+                    if matches:
+                        configs.add(matches.group(1))
+        
+        except Exception as e:
+            if self.verbose:
+                print(f"Error extracting folder configs from {makefile_path} for {folder_path}: {e}")
+            return set()
+
+    def _extract_configs_by_folder_heuristics(self, source_file_path: str, kernel_source_path: str) -> Set[str]:
+        """
+        Extract CONFIG options using folder name heuristics based on common kernel patterns.
+
+        Args:
+            source_file_path: Path to the source file
+            kernel_source_path: Path to kernel source directory
+
+        Returns:
+            Set of CONFIG options based on folder heuristics
+        """
+        configs = set()
+        
+        try:
+            # Parse the path components
+            path_parts = source_file_path.split('/')
+            
+            # Common kernel subsystem mappings
+            subsystem_configs = {
+                'drivers/usb': ['CONFIG_USB_SUPPORT', 'CONFIG_USB'],
+                'drivers/net': ['CONFIG_NETDEVICES', 'CONFIG_NET'],
+                'drivers/gpu/drm': ['CONFIG_DRM'],
+                'drivers/input': ['CONFIG_INPUT'],
+                'drivers/media': ['CONFIG_MEDIA_SUPPORT'],
+                'drivers/sound': ['CONFIG_SOUND'],
+                'drivers/crypto': ['CONFIG_CRYPTO'],
+                'drivers/bluetooth': ['CONFIG_BT'],
+                'drivers/wireless': ['CONFIG_WLAN', 'CONFIG_CFG80211'],
+                'net/wireless': ['CONFIG_WLAN', 'CONFIG_CFG80211'],
+                'drivers/staging': ['CONFIG_STAGING'],
+                'drivers/scsi': ['CONFIG_SCSI'],
+                'drivers/ata': ['CONFIG_ATA'],
+                'drivers/block': ['CONFIG_BLK_DEV'],
+                'drivers/char': ['CONFIG_CHAR'],
+                'drivers/mmc': ['CONFIG_MMC'],
+                'drivers/mtd': ['CONFIG_MTD'],
+                'drivers/watchdog': ['CONFIG_WATCHDOG'],
+                'drivers/rtc': ['CONFIG_RTC_CLASS'],
+                'drivers/i2c': ['CONFIG_I2C'],
+                'drivers/spi': ['CONFIG_SPI'],
+                'drivers/gpio': ['CONFIG_GPIOLIB'],
+                'drivers/pinctrl': ['CONFIG_PINCTRL'],
+                'drivers/clk': ['CONFIG_COMMON_CLK'],
+                'drivers/regulator': ['CONFIG_REGULATOR'],
+                'drivers/thermal': ['CONFIG_THERMAL'],
+                'drivers/cpufreq': ['CONFIG_CPU_FREQ'],
+                'drivers/cpuidle': ['CONFIG_CPU_IDLE'],
+                'drivers/firmware': ['CONFIG_FIRMWARE_IN_KERNEL'],
+                'arch/': ['CONFIG_ARCH_'],  # Will be processed specially
+                'fs/': ['CONFIG_FS_', 'CONFIG_FILE_SYSTEM'],
+                'mm/': ['CONFIG_MM'],
+                'kernel/': ['CONFIG_KERNEL'],
+                'init/': ['CONFIG_INIT'],
+                'lib/': ['CONFIG_LIB'],
+                'security/': ['CONFIG_SECURITY'],
+                'ipc/': ['CONFIG_IPC'],
+                'crypto/': ['CONFIG_CRYPTO'],
+                'sound/': ['CONFIG_SOUND'],
+                'net/': ['CONFIG_NET'],
+            }
+            
+            # Check for subsystem patterns
+            for subsystem_path, base_configs in subsystem_configs.items():
+                if source_file_path.startswith(subsystem_path):
+                    # Add base configs
+                    configs.update(base_configs)
+                    
+                    # For more specific matching, try to derive configs from remaining path
+                    remaining_path = source_file_path[len(subsystem_path):].lstrip('/')
+                    if remaining_path:
+                        remaining_parts = remaining_path.split('/')
+                        if remaining_parts:
+                            # Try to create specific config based on next folder
+                            next_folder = remaining_parts[0]
+                            
+                            if subsystem_path == 'drivers/usb':
+                                # USB subsystem specific configs
+                                usb_configs = {
+                                    'net': 'CONFIG_USB_NET_DRIVERS',
+                                    'serial': 'CONFIG_USB_SERIAL',
+                                    'storage': 'CONFIG_USB_STORAGE',
+                                    'host': 'CONFIG_USB_EHCI_HCD',
+                                    'gadget': 'CONFIG_USB_GADGET',
+                                    'class': 'CONFIG_USB_ACM',
+                                    'misc': 'CONFIG_USB_MISC',
+                                    'mon': 'CONFIG_USB_MON',
+                                    'wusbcore': 'CONFIG_USB_WUSB',
+                                    'image': 'CONFIG_USB_MDC800',
+                                    'chipidea': 'CONFIG_USB_CHIPIDEA',
+                                    'dwc2': 'CONFIG_USB_DWC2',
+                                    'dwc3': 'CONFIG_USB_DWC3',
+                                    'musb': 'CONFIG_USB_MUSB_HDRC',
+                                    'renesas_usbhs': 'CONFIG_USB_RENESAS_USBHS',
+                                    'fotg210': 'CONFIG_USB_FOTG210',
+                                    'isp1760': 'CONFIG_USB_ISP1760',
+                                    'c67x00': 'CONFIG_USB_C67X00_HCD',
+                                    'usbip': 'CONFIG_USBIP_CORE',
+                                }
+                                if next_folder in usb_configs:
+                                    configs.add(usb_configs[next_folder])
+                            
+                            elif subsystem_path == 'drivers/net':
+                                # Network subsystem specific configs
+                                net_configs = {
+                                    'wireless': 'CONFIG_WLAN',
+                                    'ethernet': 'CONFIG_NET_ETHERNET',
+                                    'usb': 'CONFIG_USB_NET_DRIVERS',
+                                    'wan': 'CONFIG_WAN',
+                                    'ppp': 'CONFIG_PPP',
+                                    'slip': 'CONFIG_SLIP',
+                                    'can': 'CONFIG_CAN',
+                                    'irda': 'CONFIG_IRDA',
+                                    'hamradio': 'CONFIG_HAMRADIO',
+                                    'ieee802154': 'CONFIG_IEEE802154',
+                                    'wimax': 'CONFIG_WIMAX',
+                                    'caif': 'CONFIG_CAIF',
+                                    'team': 'CONFIG_NET_TEAM',
+                                    'bonding': 'CONFIG_BONDING',
+                                    'dummy': 'CONFIG_DUMMY',
+                                    'tun': 'CONFIG_TUN',
+                                    'veth': 'CONFIG_VETH',
+                                    'macvlan': 'CONFIG_MACVLAN',
+                                    'bridge': 'CONFIG_BRIDGE',
+                                    'vxlan': 'CONFIG_VXLAN',
+                                }
+                                if next_folder in net_configs:
+                                    configs.add(net_configs[next_folder])
+                            
+                            # Generic pattern: try to create CONFIG from folder name
+                            if len(next_folder) > 2:
+                                # Convert folder name to potential config name
+                                config_name = next_folder.upper().replace('-', '_')
+                                
+                                # Add subsystem-specific prefixes
+                                if subsystem_path.startswith('drivers/'):
+                                    subsystem = subsystem_path.split('/')[-1].upper()
+                                    potential_config = f"CONFIG_{subsystem}_{config_name}"
+                                    configs.add(potential_config)
+                                else:
+                                    potential_config = f"CONFIG_{config_name}"
+                                    configs.add(potential_config)
+    
+            # Special handling for architecture-specific files
+            if source_file_path.startswith('arch/'):
+                arch_parts = source_file_path.split('/')
+                if len(arch_parts) > 1:
+                    arch_name = arch_parts[1].upper()
+                    configs.add(f"CONFIG_{arch_name}")
+                    configs.add(f"CONFIG_ARCH_{arch_name}")
+            
+            # File system specific handling
+            if source_file_path.startswith('fs/'):
+                fs_parts = source_file_path.split('/')
+                if len(fs_parts) > 1:
+                    fs_name = fs_parts[1].upper()
+                    configs.add(f"CONFIG_{fs_name}_FS")
+                    configs.add(f"CONFIG_FS_{fs_name}")
+            
+            return configs
+            
+        except Exception as e:
+            if self.verbose:
+                print(f"Error in folder heuristics for {source_file_path}: {e}")
             return set()

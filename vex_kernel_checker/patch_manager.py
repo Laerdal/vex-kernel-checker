@@ -38,7 +38,12 @@ class PatchManager(VexKernelCheckerBase):
         **kwargs,
     ):
         """Initialize patch manager."""
-        super().__init__(verbose=verbose, detailed_timing=detailed_timing, **kwargs)
+        super().__init__(
+            verbose=verbose,
+            detailed_timing=detailed_timing,
+            edge_driver_path=edge_driver_path,
+            **kwargs
+        )
         self.edge_driver_path = edge_driver_path
 
         # Compile regex patterns for patch processing
@@ -173,37 +178,15 @@ class PatchManager(VexKernelCheckerBase):
                     print('Successfully fetched patch from GitHub API')
                 return github_content
 
-        # Try direct HTTP request to original URL
-        try:
-            if self.verbose:
-                print(f'Attempting direct HTTP request to: {patch_url}')
-
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Accept': 'text/plain, text/html, application/json, */*',
-            }
-
-            response = requests.get(patch_url, headers=headers, timeout=30)
-            response.raise_for_status()
-
-            content = response.text
-            if content and (
-                'diff --git' in content or 'index ' in content or '@@' in content
-            ):
-                if self.verbose:
-                    print('Successfully fetched patch via direct HTTP')
-                return content
-
-        except Exception as e:
-            if self.verbose:
-                print(f'Direct HTTP request failed: {e}')
-
-        # Try alternative URLs (GitHub URLs will be prioritized in the list)
-        alternative_urls = self.get_alternative_patch_urls(patch_url)
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Accept': 'text/plain, text/html, application/json, */*',
         }
+
+        # Try alternative URLs (GitHub URLs will be prioritized in the list)
+        alternative_urls = self.get_alternative_patch_urls(patch_url)
+        if self.verbose:
+            print(f'🔍 PatchManager: Found {len(alternative_urls)} alternative URLs for {patch_url}')
 
         for alt_url in alternative_urls[:5]:  # Try top 5 alternatives
             if alt_url == patch_url:  # Skip original URL
@@ -228,6 +211,28 @@ class PatchManager(VexKernelCheckerBase):
                     print(f'Alternative URL {alt_url} failed: {e}')
                 continue
 
+        # Try direct HTTP request to original URL
+        try:
+            if self.verbose:
+                print(f'Attempting direct HTTP request to: {patch_url}')
+
+            # Use the same headers as above for consistency
+
+            response = requests.get(patch_url, headers=headers, timeout=30)
+            response.raise_for_status()
+
+            content = response.text
+            if content and (
+                'diff --git' in content or 'index ' in content or '@@' in content
+            ):
+                if self.verbose:
+                    print('Successfully fetched patch via direct HTTP')
+                return content
+
+        except Exception as e:
+            if self.verbose:
+                print(f'Direct HTTP request failed: {e}')
+        
         # Final fallback: try Selenium WebDriver
         if SELENIUM_AVAILABLE and self.edge_driver_path:
             if self.verbose:
@@ -363,6 +368,12 @@ class PatchManager(VexKernelCheckerBase):
 
     def _extract_commit_id_from_url(self, url: str) -> Optional[str]:
         """Extract commit ID from various URL formats."""
+        if not url:
+            return None
+        
+        # Normalize URL to lowercase for consistent matching
+        url = url.lower()
+
         # Common patterns for commit IDs in URLs
         patterns = [
             r'commit/([a-f0-9]{40})',  # GitHub commit
@@ -371,6 +382,7 @@ class PatchManager(VexKernelCheckerBase):
             r'id=([a-f0-9]{8,40})',  # kernel.org shorter
             r'/([a-f0-9]{40})\.patch',  # Direct patch format
             r'/([a-f0-9]{40})\.diff',  # Direct diff format
+            r'/([a-f0-9]{40})',  # Direct commit format
         ]
 
         for pattern in patterns:
