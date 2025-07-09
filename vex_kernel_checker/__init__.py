@@ -16,6 +16,7 @@ from .common import (
 )
 from .config_analyzer import ConfigurationAnalyzer
 from .cve_manager import CVEDataManager
+from .logging_utils import configure_logging, get_logger, is_verbose
 from .main_checker import VexKernelChecker
 from .patch_manager import PatchManager
 from .report_generator import ReportGenerator
@@ -40,4 +41,7 @@ __all__ = [
     'VulnerabilityAnalysis',
     'CVEInfo',
     'PerformanceTracker',
+    'configure_logging',
+    'get_logger',
+    'is_verbose',
 ]

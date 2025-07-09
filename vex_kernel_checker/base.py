@@ -11,6 +11,7 @@ import time
 from typing import Dict, List, Optional, Tuple
 
 from .common import PerformanceTracker, timed_method
+from .logging_utils import get_logger
 
 
 class VexKernelCheckerBase:
@@ -103,6 +104,9 @@ class VexKernelCheckerBase:
 
         # Performance tracker
         self.perf_tracker = PerformanceTracker()
+        
+        # Logger
+        self.logger = get_logger(__name__)
 
     @timed_method
     def _get_cached_file_content(self, file_path: str) -> str:
@@ -126,7 +130,7 @@ class VexKernelCheckerBase:
             return content
         except Exception as e:
             if self.verbose:
-                print(f'Error reading file {file_path}: {e}')
+                self.logger.error(f'Error reading file {file_path}: {e}')
             return ""
 
     @timed_method
@@ -159,7 +163,7 @@ class VexKernelCheckerBase:
 
         except Exception as e:
             if self.verbose:
-                print(f'Error parsing makefile {makefile_path}: {e}')
+                self.logger.error(f'Error parsing makefile {makefile_path}: {e}')
 
         return makefile_vars
 
@@ -182,7 +186,7 @@ class VexKernelCheckerBase:
         self._processed_cves.clear()
 
         if self.verbose:
-            print('All caches cleared')
+            self.logger.info('All caches cleared')
 
     def clear_caches(self) -> None:
         """Clear all internal caches."""

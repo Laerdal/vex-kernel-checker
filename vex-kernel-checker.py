@@ -26,20 +26,24 @@ from vex_kernel_checker import (  # noqa: E402
     PerformanceTracker,
     VexKernelChecker,
     VexKernelCheckerBase,
+    configure_logging,
+    get_logger,
 )
 
 import logging
 
 def setup_logging(verbose: bool, log_file: Optional[str] = None):
-    """Setup structured logging."""
-    level = logging.DEBUG if verbose else logging.INFO
-    format_str = '%(asctime)s - %(levelname)s - %(message)s'
+    """Setup structured logging with enhanced verbose mode."""
+    # Use centralized logging configuration
+    configure_logging(verbose, log_file)
     
-    handlers = [logging.StreamHandler()]
-    if log_file:
-        handlers.append(logging.FileHandler(log_file))
+    # Get logger for this module
+    logger = get_logger(__name__)
     
-    logging.basicConfig(level=level, format=format_str, handlers=handlers)
+    if verbose:
+        logger.debug("Verbose logging enabled for main CLI")
+    
+    return logger
 
 
 def load_config_file(config_path: str) -> Dict:
@@ -57,7 +61,10 @@ def load_config_file(config_path: str) -> Dict:
     Raises:
         SystemExit: If configuration file cannot be loaded or parsed
     """
+    logger = get_logger(__name__)
+    
     if not os.path.exists(config_path):
+        logger.error(f'Configuration file not found: {config_path}')
         print(f'Error: Configuration file not found: {config_path}')
         sys.exit(1)
     
@@ -66,9 +73,11 @@ def load_config_file(config_path: str) -> Dict:
     try:
         # Determine file format based on extension
         _, ext = os.path.splitext(config_path.lower())
+        logger.debug(f"Detected configuration file format: {ext}")
         
         if ext == '.json':
             # JSON format
+            logger.debug("Loading JSON configuration file")
             with open(config_path, 'r', encoding='utf-8') as f:
                 json_config = json.load(f)
                 
@@ -86,16 +95,19 @@ def load_config_file(config_path: str) -> Dict:
                         config_dir = os.path.dirname(os.path.abspath(config_path))
                         expanded_value = os.path.join(config_dir, expanded_value)
                     config[cli_key] = expanded_value
+                    logger.debug(f"Expanded path for {cli_key}: {expanded_value}")
                 else:
                     config[cli_key] = value
                 
         elif ext in ['.ini', '.cfg', '.config']:
             # INI format
+            logger.debug("Loading INI configuration file")
             parser = configparser.ConfigParser()
             parser.read(config_path)
             
             # Use the 'vex-kernel-checker' section if it exists, otherwise use DEFAULT
             section_name = 'vex-kernel-checker' if 'vex-kernel-checker' in parser else 'DEFAULT'
+            logger.debug(f"Using configuration section: {section_name}")
             
             for key, value in parser[section_name].items():
                 # Convert underscores to hyphens for CLI compatibility
@@ -116,21 +128,29 @@ def load_config_file(config_path: str) -> Dict:
                             config_dir = os.path.dirname(os.path.abspath(config_path))
                             expanded_value = os.path.join(config_dir, expanded_value)
                         config[cli_key] = expanded_value
+                        logger.debug(f"Expanded path for {cli_key}: {expanded_value}")
                     else:
                         config[cli_key] = value
                     
         else:
+            logger.error(f'Unsupported configuration file format: {ext}')
             print(f'Error: Unsupported configuration file format: {ext}')
             print('Supported formats: .json, .ini, .cfg, .config')
             sys.exit(1)
+        
+        logger.info(f"Successfully loaded configuration with {len(config)} options")
+        logger.debug(f"Configuration keys: {list(config.keys())}")
             
     except json.JSONDecodeError as e:
+        logger.error(f'Error parsing JSON configuration file: {e}')
         print(f'Error parsing JSON configuration file: {e}')
         sys.exit(1)
     except configparser.Error as e:
+        logger.error(f'Error parsing INI configuration file: {e}')
         print(f'Error parsing INI configuration file: {e}')
         sys.exit(1)
     except Exception as e:
+        logger.error(f'Error loading configuration file: {e}')
         print(f'Error loading configuration file: {e}')
         sys.exit(1)
     
@@ -150,6 +170,8 @@ def merge_config_with_args(config: Dict, args: argparse.Namespace) -> argparse.N
     Returns:
         Updated argument namespace
     """
+    logger = get_logger(__name__)
+    
     # Create a copy of args to avoid modifying the original
     merged_args = argparse.Namespace(**vars(args))
     
@@ -160,6 +182,7 @@ def merge_config_with_args(config: Dict, args: argparse.Namespace) -> argparse.N
         
         # Skip if the attribute doesn't exist on args (invalid config option)
         if not hasattr(merged_args, attr_key):
+            logger.warning(f'Unknown configuration option: {key}')
             print(f'Warning: Unknown configuration option: {key}')
             continue
             
@@ -170,9 +193,11 @@ def merge_config_with_args(config: Dict, args: argparse.Namespace) -> argparse.N
         if isinstance(current_value, bool):
             if not current_value and value:
                 setattr(merged_args, attr_key, value)
+                logger.debug(f"Set {attr_key} from config: {value}")
         # For other values, only set if current value is None or empty
         elif current_value is None or current_value == '':
             setattr(merged_args, attr_key, value)
+            logger.debug(f"Set {attr_key} from config: {value}")
     
     return merged_args
 
@@ -237,16 +262,23 @@ clear_cache = false
 
 def validate_input_files(args) -> bool:
     """Validate that all required input files exist."""
+    logger = get_logger(__name__)
+    
     # Check if required arguments are provided
     if not args.vex_file:
+        logger.error('--vex-file is required')
         print('Error: --vex-file is required')
         return False
     if not args.kernel_config:
+        logger.error('--kernel-config is required')
         print('Error: --kernel-config is required')
         return False
     if not args.kernel_source:
+        logger.error('--kernel-source is required')
         print('Error: --kernel-source is required')
         return False
+    
+    logger.debug("Validating input files existence")
     
     validations = [
         (args.vex_file, "VEX file"),
@@ -256,13 +288,18 @@ def validate_input_files(args) -> bool:
     
     for file_path, description in validations:
         if not os.path.exists(file_path):
+            logger.error(f'{description} not found: {file_path}')
             print(f'Error: {description} not found: {file_path}')
             return False
+        else:
+            logger.debug(f'{description} found: {file_path}')
     
     # Additional validation for file types/formats
     if not args.vex_file.endswith(('.json', '.cdx')):
+        logger.warning(f'VEX file should be JSON or CDX format: {args.vex_file}')
         print(f'Warning: VEX file should be JSON or CDX format: {args.vex_file}')
     
+    logger.info("All input files validated successfully")
     return True
 
 
@@ -384,18 +421,24 @@ def setup_argument_parser() -> argparse.ArgumentParser:
 
 def load_and_validate_data(args, perf_tracker: PerformanceTracker):
     """Load VEX data and kernel configuration with validation."""
+    logger = get_logger(__name__)
+    
     # Load VEX data
+    logger.info(f'Loading VEX data from {args.vex_file}...')
     perf_tracker.start_timer('load_vex_data')
     print(f'Loading VEX data from {args.vex_file}...')
     vex_data = VexKernelCheckerBase.load_vex_file(args.vex_file)
     perf_tracker.end_timer('load_vex_data')
+    logger.debug(f"Loaded VEX data with {len(vex_data.get('vulnerabilities', []))} vulnerabilities")
 
     # Load kernel config
+    logger.info(f'Loading kernel configuration from {args.kernel_config}...')
     perf_tracker.start_timer('load_kernel_config')
     print(f'Loading kernel configuration from {args.kernel_config}...')
     kernel_config = VexKernelCheckerBase.load_kernel_config(args.kernel_config)
     perf_tracker.end_timer('load_kernel_config')
 
+    logger.info(f'Loaded {len(kernel_config)} configuration options')
     print(f'Loaded {len(kernel_config)} configuration options')
 
     return vex_data, kernel_config
@@ -403,13 +446,18 @@ def load_and_validate_data(args, perf_tracker: PerformanceTracker):
 
 def setup_architecture_detection(kernel_config, perf_tracker: PerformanceTracker):
     """Extract and validate architecture from kernel configuration."""
+    logger = get_logger(__name__)
+    
+    logger.debug("Extracting architecture from kernel configuration")
     perf_tracker.start_timer('extract_architecture')
     arch, arch_config = VexKernelCheckerBase.extract_arch_from_config(kernel_config)
     perf_tracker.end_timer('extract_architecture')
 
     if arch and arch_config:
+        logger.info(f'Detected architecture: {arch} ({arch_config})')
         print(f'Detected architecture: {arch} ({arch_config})')
     else:
+        logger.warning('Could not detect architecture from kernel configuration')
         print('Warning: Could not detect architecture from kernel configuration')
         print('This may affect the accuracy of vulnerability analysis')
 
@@ -418,8 +466,17 @@ def setup_architecture_detection(kernel_config, perf_tracker: PerformanceTracker
 
 def setup_checker(args, arch):
     """Initialize the VEX Kernel Checker with provided arguments."""
+    logger = get_logger(__name__)
+    
     disable_patch_checking = args.config_only
-
+    
+    logger.info('Initializing VEX Kernel Checker...')
+    logger.debug(f"Patch checking: {'disabled' if disable_patch_checking else 'enabled'}")
+    logger.debug(f"Architecture: {arch}")
+    logger.debug(f"Analyze all CVEs: {args.analyze_all_cves}")
+    logger.debug(f"API key provided: {bool(args.api_key)}")
+    logger.debug(f"Edge driver path: {args.edge_driver}")
+    
     print('Initializing VEX Kernel Checker...')
     checker = VexKernelChecker(
         verbose=args.verbose,
@@ -433,6 +490,7 @@ def setup_checker(args, arch):
 
     # Clear cache if requested
     if args.clear_cache:
+        logger.info('Clearing caches...')
         print('Clearing caches...')
         checker.clear_all_caches()
 
@@ -441,18 +499,31 @@ def setup_checker(args, arch):
 
 def validate_and_show_vex_data(checker, vex_data):
     """Validate VEX data and show any issues."""
+    logger = get_logger(__name__)
+    
+    logger.debug("Validating VEX data structure")
     validation_issues = checker.validate_vex_data(vex_data)
+    
     if validation_issues:
+        logger.warning(f"Found {len(validation_issues)} VEX data validation issues")
         print('VEX data validation warnings:')
         for issue in validation_issues[:3]:
+            logger.warning(f"VEX validation issue: {issue}")
             print(f'  ⚠️  {issue}')
         if len(validation_issues) > 3:
+            logger.warning(f"... and {len(validation_issues) - 3} more validation issues")
             print(f'  ... and {len(validation_issues) - 3} more issues')
         print()
+    else:
+        logger.info("VEX data validation completed successfully")
+        logger.debug("No validation issues found")
 
 
 def perform_analysis(args, checker, vex_data, kernel_config, arch):
     """Execute the vulnerability analysis and return results."""
+    logger = get_logger(__name__)
+    
+    logger.info("Starting vulnerability analysis")
     print('\n' + '=' * 60)
     print('🚀 STARTING VULNERABILITY ANALYSIS')
     print('=' * 60)
@@ -462,6 +533,9 @@ def perform_analysis(args, checker, vex_data, kernel_config, arch):
         vex_data, kernel_config, arch, args.config_only, args.api_key
     )
 
+    logger.debug(f"Analysis parameters: reanalyse={args.reanalyse}, cve_id={args.cve_id}")
+    logger.debug(f"Kernel source path: {args.kernel_source}")
+    
     start_time = time.time()
 
     updated_vex_data = checker.analyze_vulnerabilities(
@@ -473,6 +547,8 @@ def perform_analysis(args, checker, vex_data, kernel_config, arch):
     )
 
     analysis_time = time.time() - start_time
+    logger.info(f"Analysis completed in {analysis_time:.2f} seconds")
+    
     print('\n' + '=' * 60)
     print('✅ ANALYSIS COMPLETED')
     print('=' * 60)
@@ -480,7 +556,9 @@ def perform_analysis(args, checker, vex_data, kernel_config, arch):
 
     total_vulns = len(vex_data.get('vulnerabilities', []))
     if analysis_time > 0:
-        print(f'📊 Performance: {total_vulns / analysis_time:.1f} CVEs/second')
+        performance_rate = total_vulns / analysis_time
+        logger.info(f"Analysis performance: {performance_rate:.1f} CVEs/second")
+        print(f'📊 Performance: {performance_rate:.1f} CVEs/second')
     print()
 
     return updated_vex_data
@@ -488,17 +566,24 @@ def perform_analysis(args, checker, vex_data, kernel_config, arch):
 
 def save_results_and_generate_reports(args, checker, updated_vex_data, output_file):
     """Generate reports and save results to file."""
+    logger = get_logger(__name__)
+    
+    logger.info("Generating vulnerability report")
     # Generate report
     report = checker.generate_report(updated_vex_data)
     checker.print_report_summary(report)
+    
+    logger.debug(f"Report summary: {report}")
 
     # Save results
+    logger.info(f'Saving results to {output_file}')
     print(f'\n💾 Saving results to {output_file}...')
     VexKernelCheckerBase.save_vex_file(updated_vex_data, output_file)
     print(f'✅ Results saved to {output_file}')
 
     # Performance stats
     if args.performance_stats:
+        logger.debug("Displaying performance statistics")
         checker.print_performance_stats()
 
     # Final summary
@@ -507,6 +592,11 @@ def save_results_and_generate_reports(args, checker, updated_vex_data, output_fi
 
 def run_analysis_workflow(args, output_file, perf_tracker):
     """Run the complete analysis workflow."""
+    logger = get_logger(__name__)
+    
+    logger.info("Starting analysis workflow")
+    logger.debug(f"Output file: {output_file}")
+    
     # Load and validate data
     vex_data, kernel_config = load_and_validate_data(args, perf_tracker)
 
@@ -524,6 +614,8 @@ def run_analysis_workflow(args, output_file, perf_tracker):
 
     # Save results and generate reports
     save_results_and_generate_reports(args, checker, updated_vex_data, output_file)
+    
+    logger.info("Analysis workflow completed successfully")
 
 
 def main() -> int:
@@ -541,17 +633,27 @@ def main() -> int:
     # Load configuration file if specified
     config = {}
     if args.config:
-        if args.verbose:
-            print(f'Loading configuration from: {args.config}')
+        logger = get_logger(__name__)
+        logger.info(f'Loading configuration from: {args.config}')
         config = load_config_file(args.config)
         
         # Merge configuration with command-line arguments
         args = merge_config_with_args(config, args)
         
+        logger.info('Configuration loaded and merged with command-line arguments')
         if args.verbose:
-            print('Configuration loaded and merged with command-line arguments')
+            logger.debug(f"Configuration values: {config}")
+            logger.debug(f"Merged arguments: {vars(args)}")
 
-    setup_logging(args.verbose, args.log_file)
+    logger = setup_logging(args.verbose, args.log_file)
+
+    # Get logger for this module
+    if not logger:
+        logger = get_logger(__name__)
+    
+    if args.verbose:
+        logger.debug("Starting VEX Kernel Checker with verbose logging enabled")
+        logger.debug(f"Command line arguments: {vars(args)}")
 
     # Validate input files
     if not validate_input_files(args):
@@ -565,14 +667,18 @@ def main() -> int:
 
     try:
         run_analysis_workflow(args, output_file, perf_tracker)
+        logger.info("VEX Kernel Checker completed successfully")
         return 0
 
     except KeyboardInterrupt:
+        logger.warning("Analysis interrupted by user")
         print('\nAnalysis interrupted by user')
         return 1
     except Exception as exception:
+        logger.error(f'Error during analysis: {exception}')
         print(f'Error during analysis: {exception}')
         if args.verbose:
+            logger.debug("Full traceback:", exc_info=True)
             traceback.print_exc()
         return 1
 

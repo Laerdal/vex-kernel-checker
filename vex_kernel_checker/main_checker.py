@@ -15,6 +15,7 @@ from .base import VexKernelCheckerBase
 from .common import PerformanceTracker
 from .config_analyzer import ConfigurationAnalyzer
 from .cve_manager import CVEDataManager
+from .logging_utils import get_logger
 from .patch_manager import PatchManager
 from .report_generator import ReportGenerator
 from .vulnerability_analyzer import VulnerabilityAnalyzer
@@ -50,6 +51,12 @@ class VexKernelChecker(VexKernelCheckerBase):
         self.check_patches = check_patches
         self.analyze_all_cves = analyze_all_cves
         self.detailed_timing = detailed_timing
+
+        # Logger
+        self.logger = get_logger(__name__)
+        
+        if self.verbose:
+            self.logger.debug(f"Initialized VexKernelChecker with patches={'enabled' if check_patches else 'disabled'}")
 
         # Initialize performance tracker
         self.perf_tracker = PerformanceTracker()
