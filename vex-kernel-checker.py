@@ -322,15 +322,55 @@ def print_analysis_overview(
 
 
 def print_final_summary(report: Dict) -> None:
-    """Print final analysis summary."""
+    """Print final analysis summary with highlights."""
     exploitable_count = report.get('exploitable', 0)
     not_affected_count = report.get('not_affected', 0)
     in_triage_count = report.get('in_triage', 0)
     resolved_count = report.get('resolved', 0)
     resolved_with_pedigree_count = report.get('resolved_with_pedigree', 0)
     false_positive_count = report.get('false_positive', 0)
+    total_count = report.get('total', 0)
+    
+    # Calculate coverage
+    analysis_coverage = report.get('analysis_coverage', 0.0)
+    analyzed_count = total_count - in_triage_count if total_count > 0 else 0
 
-    print('\n🎯 Final Summary:')
+    print('\n' + '=' * 60)
+    print('🎯 ANALYSIS SUMMARY')
+    print('=' * 60)
+    
+    # Highlights section
+    print('\n✨ HIGHLIGHTS:')
+    
+    # Calculate key metrics
+    safe_count = not_affected_count + resolved_count + resolved_with_pedigree_count + false_positive_count
+    risk_count = exploitable_count
+    
+    if total_count > 0:
+        safe_percentage = (safe_count / total_count) * 100
+        risk_percentage = (risk_count / total_count) * 100
+        
+        print(f'   • {safe_count}/{total_count} ({safe_percentage:.1f}%) vulnerabilities are safe or mitigated')
+        
+        if risk_count > 0:
+            print(f'   • {risk_count}/{total_count} ({risk_percentage:.1f}%) vulnerabilities require attention')
+        else:
+            print('   • No exploitable vulnerabilities found! 🎉')
+        
+        print(f'   • Analysis coverage: {analysis_coverage:.1f}% ({analyzed_count}/{total_count} CVEs)')
+    
+    # Risk level
+    risk_level = report.get('summary', {}).get('risk_level', 'unknown')
+    risk_emoji = {
+        'high': '🔴',
+        'medium': '🟡', 
+        'low': '🟢',
+        'minimal': '⚪',
+        'unknown': '⚫',
+    }
+    print(f'   • Overall risk level: {risk_emoji.get(risk_level, "⚫")} {risk_level.upper()}')
+
+    print('\n📊 BREAKDOWN BY STATUS:')
     print(f'   ✅ Not affected: {not_affected_count}')
     print(f'   🔧 Resolved: {resolved_count}')
     print(f'   🔧📋 Resolved with pedigree: {resolved_with_pedigree_count}')
@@ -338,12 +378,31 @@ def print_final_summary(report: Dict) -> None:
     print(f'   ❌ False positive: {false_positive_count}')
     print(f'   🔍 In triage: {in_triage_count}')
 
+    # Show top exploitable CVEs if any
     if exploitable_count > 0:
-        print(f'\n⚠️  Warning: {exploitable_count} vulnerabilities may affect this kernel')
+        print(f'\n⚠️  WARNING: {exploitable_count} vulnerabilities may affect this kernel')
         print('   Review analysis details and consider patches or config changes')
+        
+        vulnerabilities = report.get('vulnerabilities', {})
+        exploitable_list = [
+            (cve_id, details)
+            for cve_id, details in vulnerabilities.items()
+            if details.get('state') == 'exploitable'
+        ]
+        
+        if exploitable_list:
+            print('\n   Top exploitable CVEs:')
+            for cve_id, details in sorted(exploitable_list[:5]):
+                severity = details.get('severity', 'unknown')
+                print(f'   • {cve_id} (severity: {severity})')
+            
+            if len(exploitable_list) > 5:
+                print(f'   ... and {len(exploitable_list) - 5} more')
 
     if in_triage_count > 0:
-        print(f'\n🔍 Note: {in_triage_count} vulnerabilities need manual review')
+        print(f'\n🔍 NOTE: {in_triage_count} vulnerabilities need manual review')
+    
+    print('=' * 60)
 
 
 def setup_argument_parser() -> argparse.ArgumentParser:
@@ -564,6 +623,151 @@ def perform_analysis(args, checker, vex_data, kernel_config, arch):
     return updated_vex_data
 
 
+def generate_markdown_report(report: Dict, output_file: str) -> str:
+    """Generate a markdown report file with highlights.
+    
+    Args:
+        report: Report dictionary from generate_summary_report
+        output_file: Path to the JSON output file
+        
+    Returns:
+        Path to the generated markdown report
+    """
+    # Generate markdown filename
+    base_path = os.path.splitext(output_file)[0]
+    md_file = f"{base_path}-report.md"
+    
+    total = report.get('total', 0)
+    exploitable = report.get('exploitable', 0)
+    not_affected = report.get('not_affected', 0)
+    resolved = report.get('resolved', 0)
+    resolved_with_pedigree = report.get('resolved_with_pedigree', 0)
+    false_positive = report.get('false_positive', 0)
+    in_triage = report.get('in_triage', 0)
+    analysis_coverage = report.get('analysis_coverage', 0.0)
+    analyzed_count = total - in_triage if total > 0 else 0
+    risk_level = report.get('summary', {}).get('risk_level', 'unknown')
+    
+    # Calculate metrics
+    safe_count = not_affected + resolved + resolved_with_pedigree + false_positive
+    risk_count = exploitable
+    safe_percentage = (safe_count / total) * 100 if total > 0 else 0
+    risk_percentage = (risk_count / total) * 100 if total > 0 else 0
+    
+    # Generate markdown content
+    md_content = f"""# VEX Kernel Checker Analysis Report
+
+**Generated:** {time.strftime('%Y-%m-%d %H:%M:%S %Z', time.localtime())}  
+**Source:** `{os.path.basename(output_file)}`
+
+## 📊 Executive Summary
+
+### Key Highlights
+
+- **Total Vulnerabilities Analyzed:** {total}
+- **Analysis Coverage:** {analysis_coverage:.1f}% ({analyzed_count}/{total} CVEs)
+- **Overall Risk Level:** {risk_level.upper()}
+
+### Security Status
+
+"""
+    
+    if risk_count == 0:
+        md_content += f"✅ **{safe_count}/{total} ({safe_percentage:.1f}%)** vulnerabilities are safe or mitigated\n\n"
+        md_content += "🎉 **No exploitable vulnerabilities found!**\n\n"
+    else:
+        md_content += f"✅ **{safe_count}/{total} ({safe_percentage:.1f}%)** vulnerabilities are safe or mitigated\n\n"
+        md_content += f"⚠️ **{risk_count}/{total} ({risk_percentage:.1f}%)** vulnerabilities require attention\n\n"
+    
+    # Breakdown section
+    md_content += """## 📋 Detailed Breakdown
+
+| Status | Count | Percentage |
+|--------|-------|------------|
+"""
+    
+    if total > 0:
+        md_content += f"| ✅ Not Affected | {not_affected} | {(not_affected/total)*100:.1f}% |\n"
+        md_content += f"| 🔧 Resolved | {resolved} | {(resolved/total)*100:.1f}% |\n"
+        md_content += f"| 🔧📋 Resolved with Pedigree | {resolved_with_pedigree} | {(resolved_with_pedigree/total)*100:.1f}% |\n"
+        md_content += f"| ⚠️ Exploitable | {exploitable} | {(exploitable/total)*100:.1f}% |\n"
+        md_content += f"| ❌ False Positive | {false_positive} | {(false_positive/total)*100:.1f}% |\n"
+        md_content += f"| 🔍 In Triage | {in_triage} | {(in_triage/total)*100:.1f}% |\n"
+    
+    md_content += "\n"
+    
+    # Exploitable CVEs section
+    if exploitable > 0:
+        md_content += "## ⚠️ Exploitable Vulnerabilities\n\n"
+        md_content += f"**{exploitable} vulnerabilities** may affect this kernel configuration.\n\n"
+        md_content += "### Action Required\n\n"
+        md_content += "Review the analysis details and consider:\n"
+        md_content += "- Applying available patches\n"
+        md_content += "- Modifying kernel configuration options\n"
+        md_content += "- Updating to a newer kernel version\n\n"
+        
+        vulnerabilities = report.get('vulnerabilities', {})
+        exploitable_list = [
+            (cve_id, details)
+            for cve_id, details in vulnerabilities.items()
+            if details.get('state') == 'exploitable'
+        ]
+        
+        if exploitable_list:
+            md_content += "### Top Exploitable CVEs\n\n"
+            md_content += "| CVE ID | Severity | Description |\n"
+            md_content += "|--------|----------|-------------|\n"
+            
+            for cve_id, details in sorted(exploitable_list[:10]):
+                severity = details.get('severity', 'unknown')
+                description = details.get('description', 'No description available')
+                # Truncate description and escape pipes
+                desc_short = description[:80].replace('|', '\\|').replace('\n', ' ')
+                if len(description) > 80:
+                    desc_short += "..."
+                md_content += f"| {cve_id} | {severity} | {desc_short} |\n"
+            
+            if len(exploitable_list) > 10:
+                md_content += f"\n*... and {len(exploitable_list) - 10} more exploitable CVEs*\n"
+            
+            md_content += "\n"
+    
+    # In triage section
+    if in_triage > 0:
+        md_content += "## 🔍 Manual Review Required\n\n"
+        md_content += f"**{in_triage} vulnerabilities** require manual review to determine their impact.\n\n"
+    
+    # Recommendations section
+    recommendations = report.get('summary', {}).get('recommendations', [])
+    if recommendations:
+        md_content += "## 💡 Recommendations\n\n"
+        for i, rec in enumerate(recommendations, 1):
+            md_content += f"{i}. {rec}\n"
+        md_content += "\n"
+    
+    # Severity breakdown
+    severity_breakdown = report.get('by_severity', {})
+    if severity_breakdown and any(count > 0 for count in severity_breakdown.values()):
+        md_content += "## 📊 Severity Distribution\n\n"
+        md_content += "| Severity | Count |\n"
+        md_content += "|----------|-------|\n"
+        for severity, count in sorted(severity_breakdown.items()):
+            if count > 0:
+                md_content += f"| {severity} | {count} |\n"
+        md_content += "\n"
+    
+    # Footer
+    md_content += "---\n\n"
+    md_content += "*Generated by VEX Kernel Checker*\n"
+    md_content += f"*Full analysis data: `{os.path.basename(output_file)}`*\n"
+    
+    # Write markdown file
+    with open(md_file, 'w', encoding='utf-8') as f:
+        f.write(md_content)
+    
+    return md_file
+
+
 def save_results_and_generate_reports(args, checker, updated_vex_data, output_file):
     """Generate reports and save results to file."""
     logger = get_logger(__name__)
@@ -580,6 +784,12 @@ def save_results_and_generate_reports(args, checker, updated_vex_data, output_fi
     print(f'\n💾 Saving results to {output_file}...')
     VexKernelCheckerBase.save_vex_file(updated_vex_data, output_file)
     print(f'✅ Results saved to {output_file}')
+    
+    # Generate markdown report
+    logger.info("Generating markdown report")
+    md_file = generate_markdown_report(report, output_file)
+    print(f'📄 Markdown report saved to {md_file}')
+    logger.info(f"Markdown report saved to {md_file}")
 
     # Performance stats
     if args.performance_stats:

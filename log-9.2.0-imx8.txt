@@ -1,0 +1,9 @@
+2025-11-06 15:02:39,061 - INFO - All input files validated successfully
+2025-11-06 15:02:39,061 - INFO - Starting analysis workflow
+2025-11-06 15:02:39,061 - INFO - Loading VEX data from /home/kopdal/Downloads/simpad-9.2.0-imx8-vex.cdx.json...
+2025-11-06 15:02:39,082 - INFO - Loading kernel configuration from ../simpad-plus-top-release/simpad2-dr-bsp/recipes-kernel/linux/dr-linux-fslc-imx-5.15/dr-imx8mp/defconfig...
+2025-11-06 15:02:39,084 - INFO - Loaded 5576 configuration options
+2025-11-06 15:02:39,087 - INFO - Detected architecture: arm64 (CONFIG_ARM64)
+2025-11-06 15:02:39,087 - INFO - Initializing VEX Kernel Checker...
+2025-11-06 15:02:39,089 - INFO - VEX data validation completed successfully
+2025-11-06 15:02:39,089 - INFO - Starting vulnerability analysis
