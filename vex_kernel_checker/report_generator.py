@@ -59,7 +59,7 @@ class ReportGenerator(VexKernelCheckerBase):
             'by_severity': {},
             'by_justification': {},
             'analysis_coverage': 0.0,
-            'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+            'lastUpdated': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
         }
 
         # Analyze each vulnerability
@@ -319,13 +319,13 @@ class ReportGenerator(VexKernelCheckerBase):
                     ),  # Use empty string as default, not 'in_triage'
                     'justification': analysis.get('justification', ''),
                     'detail': analysis.get('detail', ''),
-                    'timestamp': analysis.get('timestamp', ''),
+                    'lastUpdated': analysis.get('lastUpdated', ''),
                 },
             }
 
             # Add response information if available
             if 'response' in analysis:
-                detailed_vuln['analysis']['response'] = analysis['response']
+                detailed_vuln['analysis']['response'] = [analysis['response']] if isinstance(analysis['response'], str) else analysis['response'] 
 
             # Add source information if available
             if 'sources' in vuln:

@@ -1,76 +1,80 @@
 {
-  "bomFormat": "CycloneDX",
-  "metadata": {
-    "analysis_method": "kernel_config_analysis",
-    "error_count": 0,
-    "last_analysis": "2025-07-05T14:29:42Z",
-    "processed_count": 2,
-    "timestamp": "2025-07-05T14:00:00Z",
-    "tool_version": "2.0",
-    "tools": [
+  "bomFormat" : "CycloneDX",
+  "metadata" : {
+    "analysis_method" : "kernel_config_analysis",
+    "error_count" : 0,
+    "last_analysis" : "2025-07-05T14:29:42Z",
+    "processed_count" : 2,
+    "timestamp" : "2025-07-05T14:00:00Z",
+    "tool_version" : "2.0",
+    "tools" : [
       {
-        "name": "Test Tool",
-        "vendor": "TEST",
-        "version": "1.0"
+        "name" : "Test Tool",
+        "vendor" : "TEST",
+        "version" : "1.0"
       }
     ]
   },
-  "serialNumber": "urn:uuid:test-12345",
-  "specVersion": "1.5",
-  "version": 1,
-  "vulnerabilities": [
+  "serialNumber" : "urn:uuid:test-12345",
+  "specVersion" : "1.5",
+  "version" : 1,
+  "vulnerabilities" : [
     {
-      "analysis": {
-        "detail": "CVE not related to Linux kernel",
-        "justification": "code_not_present",
-        "response": "will_not_fix",
-        "state": "not_affected",
-        "timestamp": "2025-07-06T18:02:59Z"
+      "analysis" : {
+        "detail" : "CVE not related to Linux kernel",
+        "justification" : "code_not_present",
+        "response" : [
+          "will_not_fix"
+        ],
+        "state" : "not_affected",
+        "timestamp" : "2025-07-06T18:02:59Z"
       },
-      "bom-ref": "test-1",
-      "description": "Test CVE 1",
-      "id": "CVE-2023-38469",
-      "ratings": [
+      "bom-ref" : "test-1",
+      "description" : "Test CVE 1",
+      "id" : "CVE-2023-38469",
+      "ratings" : [
         {
-          "method": "CVSSv3",
-          "score": 5.5,
-          "severity": "medium",
-          "source": {
-            "name": "NVD",
-            "url": "https://nvd.nist.gov/"
+          "method" : "CVSSv3",
+          "score" : 5.5,
+          "severity" : "medium",
+          "source" : {
+            "name" : "NVD",
+            "url" : "https://nvd.nist.gov/"
           }
         }
       ],
-      "source": {
-        "name": "NVD",
-        "url": "https://nvd.nist.gov/"
+      "source" : {
+        "name" : "NVD",
+        "url" : "https://nvd.nist.gov/"
       }
     },
     {
-      "analysis": {
-        "detail": "CVE not related to Linux kernel",
-        "justification": "code_not_present",
-        "response": "will_not_fix",
-        "state": "not_affected",
-        "timestamp": "2025-07-06T18:03:00Z"
+      "analysis" : {
+        "detail" : "CVE not related to Linux kernel",
+        "justification" : "code_not_present",
+        "response" : [
+          "will_not_fix"
+        ],
+        "state" : "not_affected",
+        "timestamp" : "2025-07-06T18:03:00Z"
       },
-      "bom-ref": "test-2",
-      "description": "Test CVE 2",
-      "id": "CVE-2023-38470",
-      "ratings": [
+      "bom-ref" : "test-2",
+      "description" : "Test CVE 2",
+      "id" : "CVE-2023-38470",
+      "ratings" : [
         {
-          "method": "CVSSv3",
-          "score": 6.1,
-          "severity": "medium",
-          "source": {
-            "name": "NVD",
-            "url": "https://nvd.nist.gov/"
+          "method" : "CVSSv3",
+          "score" : 6.1,
+          "severity" : "medium",
+          "source" : {
+            "name" : "NVD",
+            "url" : "https://nvd.nist.gov/"
           }
         }
       ],
-      "source": {
-        "name": "NVD",
-        "url": "https://nvd.nist.gov/"
+      "source" : {
+        "name" : "NVD",
+        "url" : "https://nvd.nist.gov/"
       }
     }
   ]

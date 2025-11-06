@@ -309,10 +309,7 @@ class VexKernelChecker(VexKernelCheckerBase):
 
         updated_vex_data['metadata'].update(
             {
-                'last_analysis': self.get_current_timestamp(),
-                'processed_count': processed_count,
-                'tool_version': '2.0',
-                'analysis_method': 'kernel_config_analysis',
+                'timestamp': self.get_current_timestamp(),
             }
         )
 

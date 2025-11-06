@@ -1,52 +1,54 @@
 {
-  "metadata": {
-    "analysis_method": "kernel_config_analysis",
-    "error_count": 0,
-    "last_analysis": "2025-07-05T17:13:08Z",
-    "processed_count": 1,
-    "tool_version": "2.0"
+  "metadata" : {
+    "analysis_method" : "kernel_config_analysis",
+    "error_count" : 0,
+    "last_analysis" : "2025-07-05T17:13:08Z",
+    "processed_count" : 1,
+    "tool_version" : "2.0"
   },
-  "vulnerabilities": [
+  "vulnerabilities" : [
     {
-      "analysis": {
-        "detail": "Unable to determine configuration requirements",
-        "justification": "code_not_present",
-        "response": "can_not_fix",
-        "state": "under_investigation",
-        "timestamp": "2025-07-06T18:17:09Z"
+      "analysis" : {
+        "detail" : "Unable to determine configuration requirements",
+        "justification" : "code_not_present",
+        "response" : [
+          "can_not_fix"
+        ],
+        "state" : "under_investigation",
+        "timestamp" : "2025-07-06T18:17:09Z"
       },
-      "details": "Linux kernel IPv6 vulnerability - should be analyzed",
-      "id": "CVE-2023-52340"
+      "details" : "Linux kernel IPv6 vulnerability - should be analyzed",
+      "id" : "CVE-2023-52340"
     },
     {
-      "analysis": {
-        "detail": "Could not fetch CVE details",
-        "justification": "code_not_present",
-        "state": "under_investigation",
-        "timestamp": "2025-07-06T17:46:47Z"
+      "analysis" : {
+        "detail" : "Could not fetch CVE details",
+        "justification" : "code_not_present",
+        "state" : "under_investigation",
+        "timestamp" : "2025-07-06T17:46:47Z"
       },
-      "details": "Apache HTTP Server vulnerability - should be filtered out",
-      "id": "CVE-2023-12345"
+      "details" : "Apache HTTP Server vulnerability - should be filtered out",
+      "id" : "CVE-2023-12345"
     },
     {
-      "analysis": {
-        "detail": "Could not fetch CVE details",
-        "justification": "code_not_present",
-        "state": "under_investigation",
-        "timestamp": "2025-07-06T17:46:49Z"
+      "analysis" : {
+        "detail" : "Could not fetch CVE details",
+        "justification" : "code_not_present",
+        "state" : "under_investigation",
+        "timestamp" : "2025-07-06T17:46:49Z"
       },
-      "details": "PostgreSQL database vulnerability - should be filtered out",
-      "id": "CVE-2023-67890"
+      "details" : "PostgreSQL database vulnerability - should be filtered out",
+      "id" : "CVE-2023-67890"
     },
     {
-      "analysis": {
-        "detail": "Could not fetch CVE details",
-        "justification": "code_not_present",
-        "state": "under_investigation",
-        "timestamp": "2025-07-06T17:46:50Z"
+      "analysis" : {
+        "detail" : "Could not fetch CVE details",
+        "justification" : "code_not_present",
+        "state" : "under_investigation",
+        "timestamp" : "2025-07-06T17:46:50Z"
       },
-      "details": "Linux kernel device driver issue - should be analyzed",
-      "id": "CVE-2023-11111"
+      "details" : "Linux kernel device driver issue - should be analyzed",
+      "id" : "CVE-2023-11111"
     }
   ]
 }

@@ -258,8 +258,15 @@ class VexKernelCheckerBase:
     @staticmethod
     def save_vex_file(vex_data: Dict, file_path: str) -> None:
         """Save VEX data to file."""
-        with open(file_path, 'w') as f:
-            json.dump(vex_data, f, indent=2)
+        with open(file_path, 'w', encoding='utf-8') as f:
+            # Use separators to match Dependency Tracker format: space before and after colon
+            # Preserve key order (don't sort)
+            # Use ensure_ascii=False to preserve Unicode characters like curly quotes
+            json_str = json.dumps(vex_data, indent=2, separators=(', ', ' : '), ensure_ascii=False)
+            # Remove trailing spaces that appear after commas at end of lines
+            json_str = '\n'.join(line.rstrip() for line in json_str.split('\n'))
+            f.write(json_str)
+            f.write('\n')  # Add final newline
 
     def print_performance_stats(self):
         """Print performance statistics."""

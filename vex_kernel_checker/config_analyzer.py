@@ -531,7 +531,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
             return VulnerabilityAnalysis(
                 state=VulnerabilityState.IN_TRIAGE,
                 justification=Justification.CODE_NOT_PRESENT,
-                timestamp=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+                lastUpdated=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
             )
 
         # Convert kernel config to set for faster lookup
@@ -578,7 +578,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
                 state=VulnerabilityState.EXPLOITABLE,
                 justification=Justification.REQUIRES_CONFIGURATION,
                 detail=detail,
-                timestamp=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+                lastUpdated=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
             )
         else:
             # No relevant configs are enabled
@@ -590,7 +590,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
                 state=VulnerabilityState.NOT_AFFECTED,
                 justification=Justification.CODE_NOT_PRESENT,
                 detail=detail,
-                timestamp=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+                lastUpdated=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
             )
 
     def find_config_options_for_file(

@@ -1,31 +1,32 @@
 {
   "bomFormat": "CycloneDX",
-  "metadata": {
-    "analysis_method": "kernel_config_analysis",
-    "error_count": 0,
-    "last_analysis": "2025-07-05T14:29:42Z",
-    "processed_count": 2,
-    "timestamp": "2025-07-05T14:00:00Z",
-    "tool_version": "2.0",
-    "tools": [
+  "serialNumber" : "urn:uuid:d775eb17-56a0-420d-a621-ff40dd42a02d",
+  "version" : 1,
+  "metadata" : {
+    "timestamp" : "2025-09-30T18:51:17Z",
+    "tools" : [
       {
-        "name": "Test Tool",
-        "vendor": "TEST",
-        "version": "1.0"
+        "vendor" : "OWASP",
+        "name" : "Dependency-Track",
+        "version" : "4.13.2"
       }
-    ]
+    ],
+    "component" : {
+      "type" : "operating-system",
+      "bom-ref" : "82b75cc4-e496-437b-941a-06d93eb230f3",
+      "name" : "SimPad PLUS 2 System",
+      "version" : "9.2.0"
+    }
   },
-  "serialNumber": "urn:uuid:test-12345",
   "specVersion": "1.5",
-  "version": 1,
   "vulnerabilities": [
     {
       "analysis": {
         "detail": "CVE not related to Linux kernel",
         "justification": "code_not_present",
-        "response": "will_not_fix",
+        "response": ["will_not_fix"],
         "state": "not_affected",
-        "timestamp": "2025-07-06T18:02:59Z"
+        "lastUpdated": "2025-07-06T18:02:59Z"
       },
       "bom-ref": "test-1",
       "description": "Test CVE 1",
@@ -50,9 +51,9 @@
       "analysis": {
         "detail": "CVE not related to Linux kernel",
         "justification": "code_not_present",
-        "response": "will_not_fix",
+        "response": ["will_not_fix"],
         "state": "not_affected",
-        "timestamp": "2025-07-06T18:03:00Z"
+        "lastUpdated": "2025-07-06T18:03:00Z"
       },
       "bom-ref": "test-2",
       "description": "Test CVE 2",

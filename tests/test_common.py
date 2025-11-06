@@ -59,24 +59,24 @@ class TestVulnerabilityAnalysis(unittest.TestCase):
         self.assertIsNone(analysis.justification)
         self.assertIsNone(analysis.response)
         self.assertIsNone(analysis.detail)
-        self.assertIsNone(analysis.timestamp)
+        self.assertIsNone(analysis.lastUpdated)
 
     def test_complete_analysis_creation(self):
         """Test creating VulnerabilityAnalysis with all fields."""
-        timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        lastUpdated = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         analysis = VulnerabilityAnalysis(
             state=VulnerabilityState.NOT_AFFECTED,
             justification=Justification.CODE_NOT_PRESENT,
             response=Response.WILL_NOT_FIX,
             detail="Driver not compiled in kernel",
-            timestamp=timestamp,
+            lastUpdated=lastUpdated,
         )
 
         self.assertEqual(analysis.state, VulnerabilityState.NOT_AFFECTED)
         self.assertEqual(analysis.justification, Justification.CODE_NOT_PRESENT)
         self.assertEqual(analysis.response, Response.WILL_NOT_FIX)
         self.assertEqual(analysis.detail, "Driver not compiled in kernel")
-        self.assertEqual(analysis.timestamp, timestamp)
+        self.assertEqual(analysis.lastUpdated, lastUpdated)
 
     def test_to_dict_minimal(self):
         """Test to_dict with minimal fields."""
@@ -88,22 +88,22 @@ class TestVulnerabilityAnalysis(unittest.TestCase):
 
     def test_to_dict_complete(self):
         """Test to_dict with all fields."""
-        timestamp = "2025-01-01T12:00:00Z"
+        lastUpdated = "2025-01-01T12:00:00Z"
         analysis = VulnerabilityAnalysis(
             state=VulnerabilityState.EXPLOITABLE,
             justification=Justification.REQUIRES_CONFIGURATION,
             response=Response.CAN_NOT_FIX,
             detail="All required configs enabled",
-            timestamp=timestamp,
+            lastUpdated=lastUpdated,
         )
         result = analysis.to_dict()
 
         expected = {
             "state": "exploitable",
             "justification": "requires_configuration",
-            "response": "can_not_fix",
+            "response": ["can_not_fix"],  # Per CycloneDX 1.5 spec, response must be array
             "detail": "All required configs enabled",
-            "timestamp": "2025-01-01T12:00:00Z",
+            "lastUpdated": "2025-01-01T12:00:00Z",
         }
         self.assertEqual(result, expected)
 

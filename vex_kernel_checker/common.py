@@ -55,7 +55,7 @@ class VulnerabilityAnalysis:
     justification: Optional[Justification] = None
     response: Optional[Response] = None
     detail: Optional[str] = None
-    timestamp: Optional[str] = None
+    lastUpdated: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -63,11 +63,12 @@ class VulnerabilityAnalysis:
         if self.justification:
             result['justification'] = self.justification.value
         if self.response:
-            result['response'] = self.response.value
+            # Per CycloneDX 1.5 spec, response must be an array
+            result['response'] = [self.response.value]
         if self.detail:
             result['detail'] = self.detail
-        if self.timestamp:
-            result['timestamp'] = self.timestamp
+        if self.lastUpdated:
+            result['lastUpdated'] = self.lastUpdated
         return result
 
 
