@@ -61,6 +61,10 @@ setup(
     },
     keywords="cve vulnerability linux kernel security vex",
     extras_require={
+        "ai": [
+            "openai>=1.0.0",
+            "anthropic>=0.18.0",
+        ],
         "dev": [
             "pytest>=6.0",
             "pytest-cov>=2.0",

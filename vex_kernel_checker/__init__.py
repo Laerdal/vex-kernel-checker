@@ -4,6 +4,7 @@ VEX Kernel Checker Package.
 A modular vulnerability analysis tool for Linux kernel configurations.
 """
 
+from .ai_assistant import AIAssistant
 from .architecture_manager import ArchitectureManager
 from .base import VexKernelCheckerBase
 from .common import (
@@ -35,6 +36,7 @@ __all__ = [
     'ArchitectureManager',
     'ReportGenerator',
     'VexKernelChecker',
+    'AIAssistant',
     'VulnerabilityState',
     'Justification',
     'Response',

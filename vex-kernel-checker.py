@@ -474,6 +474,28 @@ def setup_argument_parser() -> argparse.ArgumentParser:
         action='store_true',
         help='Show detailed method timing (verbose performance output)',
     )
+    
+    # AI Assistant options
+    parser.add_argument(
+        '--ai-enabled',
+        action='store_true',
+        help='Enable AI-powered vulnerability analysis (requires API key)',
+    )
+    parser.add_argument(
+        '--ai-api-key',
+        help='API key for AI provider (or set OPENAI_API_KEY/ANTHROPIC_API_KEY env var)',
+    )
+    parser.add_argument(
+        '--ai-provider',
+        choices=['openai', 'anthropic'],
+        default='openai',
+        help='AI provider to use (default: openai)',
+    )
+    parser.add_argument(
+        '--ai-model',
+        default='gpt-4',
+        help='AI model to use (default: gpt-4 for OpenAI, claude-3-opus for Anthropic)',
+    )
 
     return parser
 
@@ -535,6 +557,7 @@ def setup_checker(args, arch):
     logger.debug(f"Analyze all CVEs: {args.analyze_all_cves}")
     logger.debug(f"API key provided: {bool(args.api_key)}")
     logger.debug(f"Edge driver path: {args.edge_driver}")
+    logger.debug(f"AI enabled: {args.ai_enabled}")
     
     print('Initializing VEX Kernel Checker...')
     checker = VexKernelChecker(
@@ -546,6 +569,31 @@ def setup_checker(args, arch):
         arch=arch,  # Use the architecture detected from config
         detailed_timing=args.detailed_timing,
     )
+    
+    # Initialize AI assistant if enabled
+    if args.ai_enabled:
+        logger.info('Initializing AI Assistant...')
+        print('🤖 Initializing AI Assistant...')
+        
+        from vex_kernel_checker import AIAssistant
+        
+        ai_assistant = AIAssistant(
+            api_key=args.ai_api_key,
+            model=args.ai_model,
+            provider=args.ai_provider,
+            verbose=args.verbose
+        )
+        
+        if ai_assistant.enabled:
+            print(f'✅ AI Assistant ready ({args.ai_provider}: {args.ai_model})')
+            logger.info(f'AI Assistant initialized with {args.ai_provider}')
+            checker.ai_assistant = ai_assistant
+        else:
+            print('⚠️  AI Assistant could not be initialized (check API key and dependencies)')
+            logger.warning('AI Assistant initialization failed')
+            checker.ai_assistant = None
+    else:
+        checker.ai_assistant = None
 
     # Clear cache if requested
     if args.clear_cache:
