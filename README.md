@@ -250,9 +250,8 @@ Command-line arguments take precedence over configuration file settings, allowin
 
 The `examples/` directory contains sample configuration files:
 - `examples/sample-config.ini` - Basic INI format example
-- `examples/sample-config.json` - Basic JSON format example  
+- `examples/sample-config.json` - Basic JSON format example
 - `examples/production-config.ini` - Comprehensive production example
-````markdown
 
 ## Analysis Methods
 
@@ -392,6 +391,47 @@ make workflow-fix
 - Cross-platform compatibility testing
 
 See [`docs/TESTING.md`](docs/TESTING.md) for comprehensive testing documentation.
+
+## GitHub Actions Integration
+
+VEX Kernel Checker includes a GitHub Actions workflow for automated analysis with deptracker integration:
+
+### VEX Analysis Workflow
+
+Automatically fetch VEX files from deptracker, analyze vulnerabilities, and upload results:
+
+```yaml
+# Trigger manually or on schedule
+uses: ./.github/workflows/vex-analysis.yml
+with:
+  vex_url: 'https://deptracker.example.com/api/vex/latest'
+  kernel_config_url: 'https://example.com/kernel-configs/6.1.config'
+  kernel_source_git_url: 'https://github.com/torvalds/linux.git'
+  kernel_branch: 'v6.1'
+  upload_enabled: true
+  upload_url: 'https://deptracker.example.com/api/vex/upload'
+secrets:
+  NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+  VEX_API_TOKEN: ${{ secrets.VEX_API_TOKEN }}
+```
+
+**Features:**
+- 📥 Fetch VEX files from deptracker or any HTTP(S) source
+- 🔍 Automated vulnerability analysis with kernel config
+- 🌐 Automated Edge WebDriver setup for patch checking
+- 🔖 Flexible kernel branch/tag selection
+- 📤 Upload completed analysis back to deptracker (optional)
+- ⏰ Scheduled runs (weekly by default)
+- 📊 Detailed reports and artifacts
+- 🔔 PR comments with analysis results
+- 🔒 Secure execution with command injection protection
+
+**Quick Start:**
+See [`.github/workflows/QUICKSTART.md`](.github/workflows/QUICKSTART.md) for setup instructions.
+
+**Full Documentation:**
+- [Workflow Documentation](.github/workflows/README.md)
+- [Deptracker Setup Guide](.github/workflows/DEPTRACKER_SETUP.md)
 
 ## Contributing
 

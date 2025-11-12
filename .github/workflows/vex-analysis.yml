@@ -1,0 +1,432 @@
+# GitHub Actions workflow for VEX Kernel Checker with Deptracker Integration
+name: VEX Analysis
+
+on:
+  # Manual trigger with inputs
+  workflow_dispatch:
+    inputs:
+      vex_url:
+        description: 'URL to fetch VEX file from, i.e deptracker endpoint'
+        required: true
+        type: string
+      kernel_config_url:
+        description: 'URL to fetch kernel config file'
+        required: true
+        type: string
+      kernel_source_git_url:
+        description: 'Git URL to fetch kernel source'
+        required: true
+        type: string
+      kernel_branch:
+        description: 'Kernel branch/tag to checkout (e.g., v6.1, linux-6.1.y). If not specified, uses default branch'
+        required: false
+        type: string
+      upload_enabled:
+        description: 'Upload completed analysis back to deptracker'
+        required: true
+        type: boolean
+        default: false
+      upload_url:
+        description: 'URL to upload completed analysis (required if upload_enabled is true)'
+        required: false
+        type: string
+      reanalyse:
+        description: 'Re-analyze existing CVE analyses'
+        required: false
+        type: boolean
+        default: false
+      verbose:
+        description: 'Enable verbose output'
+        required: false
+        type: boolean
+        default: true
+  
+  # Scheduled run (optional - runs weekly)
+  #schedule:
+  #  - cron: '0 2 * * 1'  # Every Monday at 2 AM UTC
+
+  # Can also be triggered by other workflows
+  workflow_call:
+    inputs:
+      vex_url:
+        description: 'URL to fetch VEX file from, i.e deptracker endpoint'
+        required: true
+        type: string
+      kernel_config_url:
+        description: 'URL to fetch kernel config file'
+        required: true
+        type: string
+      kernel_source_git_url:
+        description: 'Git URL to fetch kernel source'
+        required: true
+        type: string
+      kernel_branch:
+        description: 'Kernel branch/tag to checkout (e.g., v6.1, linux-6.1.y). If not specified, uses default branch'
+        required: false
+        type: string
+      upload_enabled:
+        description: 'Upload completed analysis'
+        required: true
+        type: boolean
+        default: false
+      upload_url:
+        description: 'URL to upload completed analysis'
+        required: false
+        type: string
+      reanalyse:
+        description: 'Re-analyze existing CVE analyses'
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      NVD_API_KEY:
+        description: 'NVD API key for CVE analysis'
+        required: false
+      VEX_API_TOKEN:
+        description: 'Authentication token for deptracker (used for both fetch and upload)'
+        required: false
+
+env:
+  PYTHON_VERSION: '3.9'
+
+jobs:
+  analyze-vex:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+    - name: Checkout vex-kernel-checker
+      uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        make install
+
+    - name: Setup Edge WebDriver
+      run: |
+        # Install Microsoft Edge browser (if not already installed)
+        curl https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > microsoft.gpg
+        sudo install -o root -g root -m 644 microsoft.gpg /etc/apt/trusted.gpg.d/
+        sudo sh -c 'echo "deb [arch=amd64] https://packages.microsoft.com/repos/edge stable main" > /etc/apt/sources.list.d/microsoft-edge.list'
+        sudo apt-get update
+        sudo apt-get install -y microsoft-edge-stable
+
+        # Download matching EdgeDriver
+        EDGE_VERSION=$(microsoft-edge --version | grep -oP '\d+\.\d+\.\d+\.\d+')
+        DRIVER_VERSION=$(echo $EDGE_VERSION | cut -d. -f1-3)
+        echo "Edge version: $EDGE_VERSION"
+        echo "Downloading EdgeDriver version: $DRIVER_VERSION"
+
+        wget -q "https://msedgedriver.azureedge.net/${DRIVER_VERSION}/edgedriver_linux64.zip"
+        unzip -q edgedriver_linux64.zip
+        sudo mv msedgedriver /usr/local/bin/
+        sudo chmod +x /usr/local/bin/msedgedriver
+
+        # Verify installation
+        msedgedriver --version
+        echo "EDGE_DRIVER_PATH=/usr/local/bin/msedgedriver" >> $GITHUB_ENV
+    
+    - name: Fetch VEX file from deptracker
+      id: fetch-vex
+      env:
+        VEX_API_TOKEN: ${{ secrets.VEX_API_TOKEN }}
+        DEFAULT_VEX_URL: ${{ vars.vex_url }}
+      run: |
+        echo "Fetching VEX file from deptracker..."
+
+        # Determine the URL to use (input overrides default)
+        VEX_URL="${{ inputs.vex_url }}"
+        if [ -z "$VEX_URL" ]; then
+          # Use repository variable if available, otherwise use example
+          VEX_URL="${DEFAULT_VEX_URL}"
+          if [ -z "$VEX_URL" ]; then
+            echo "Warning: No vex URL configured. Set vex_url repository variable or provide via input."
+            echo "Using example URL for demonstration"
+            VEX_URL="https://example.com/api/vex"
+          fi
+        fi
+
+        echo "Using URL: $VEX_URL"
+
+        # Fetch the VEX file
+        if [ -n "$VEX_API_TOKEN" ]; then
+          if ! curl --fail -H "Authorization: Bearer $VEX_API_TOKEN" \
+               -H "Accept: application/json" \
+               -L "$VEX_URL" \
+               -o input-vex.json; then
+            echo "Error: Failed to fetch VEX file from $VEX_URL (HTTP error)"
+            exit 1
+          fi
+        else
+          if ! curl --fail -H "Accept: application/json" \
+               -L "$VEX_URL" \
+               -o input-vex.json; then
+            echo "Error: Failed to fetch VEX file from $VEX_URL (HTTP error)"
+            exit 1
+          fi
+        fi
+        
+        # Validate the file was downloaded
+        if [ ! -f input-vex.json ] || [ ! -s input-vex.json ]; then
+          echo "Error: Failed to download VEX file"
+          exit 1
+        fi
+        
+        # Display basic info
+        echo "VEX file downloaded successfully"
+        echo "File size: $(stat -c%s input-vex.json) bytes"
+        
+        # Count vulnerabilities if possible
+        if command -v jq &> /dev/null; then
+          VULN_COUNT=$(jq '.vulnerabilities | length' input-vex.json 2>/dev/null || echo "unknown")
+          echo "Number of vulnerabilities: $VULN_COUNT"
+          echo "vuln_count=$VULN_COUNT" >> $GITHUB_OUTPUT
+        fi
+        
+        echo "vex_file=input-vex.json" >> $GITHUB_OUTPUT
+    
+    - name: Fetch or prepare kernel config
+      id: kernel-config
+      run: |
+          echo "Fetching kernel config from: ${{ inputs.kernel_config_url }}"
+          if ! curl --fail -L "${{ inputs.kernel_config_url }}" -o kernel.config; then
+            echo "Error: Failed to download kernel config file from ${{ inputs.kernel_config_url }} (HTTP error)"
+            exit 1
+          fi
+          if [ ! -f kernel.config ] || [ ! -s kernel.config ]; then
+            echo "Error: Downloaded kernel config file is empty"
+            exit 1
+          fi
+          echo "config_file=kernel.config" >> $GITHUB_OUTPUT
+          echo "Kernel config prepared: $(wc -l < kernel.config) lines"
+    
+    - name: Setup kernel source (minimal)
+      id: kernel-source
+      run: |
+          KERNEL_GIT_URL="${{ inputs.kernel_source_git_url }}"
+          KERNEL_BRANCH="${{ inputs.kernel_branch }}"
+
+          if [ -n "$KERNEL_BRANCH" ]; then
+            echo "Cloning kernel source from: $KERNEL_GIT_URL (branch/tag: $KERNEL_BRANCH)"
+            if ! git clone --depth 1 --branch "$KERNEL_BRANCH" --filter=blob:none --sparse "$KERNEL_GIT_URL" kernel-source; then
+              echo "Error: Failed to clone kernel source from $KERNEL_GIT_URL (branch: $KERNEL_BRANCH)"
+              exit 1
+            fi
+          else
+            echo "Cloning kernel source from: $KERNEL_GIT_URL (default branch)"
+            if ! git clone --depth 1 --filter=blob:none --sparse "$KERNEL_GIT_URL" kernel-source; then
+              echo "Error: Failed to clone kernel source from $KERNEL_GIT_URL"
+              exit 1
+            fi
+          fi
+
+          cd kernel-source
+          # Only checkout essential files for analysis
+          git sparse-checkout set Makefile Kconfig arch/*/Kconfig drivers/*/Kconfig
+
+          # Display cloned version info
+          echo "Kernel source info:"
+          if [ -f Makefile ]; then
+            grep -E "^(VERSION|PATCHLEVEL|SUBLEVEL|EXTRAVERSION)" Makefile | head -4 || echo "Version info not found"
+          fi
+
+          cd ..
+          echo "kernel_source=kernel-source" >> $GITHUB_OUTPUT
+    
+    - name: Run VEX Kernel Checker analysis
+      id: analysis
+      env:
+        NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+      run: |
+        # Build command array to prevent command injection
+        CMD_ARGS=(
+          "python3" "vex-kernel-checker.py"
+          "--vex-file" "${{ steps.fetch-vex.outputs.vex_file }}"
+          "--kernel-config" "${{ steps.kernel-config.outputs.config_file }}"
+          "--kernel-source" "${{ steps.kernel-source.outputs.kernel_source }}"
+          "--output" "analyzed-vex.json"
+        )
+
+        # Add NVD API key if available
+        if [ -n "$NVD_API_KEY" ]; then
+          CMD_ARGS+=("--api-key" "$NVD_API_KEY")
+          # Add Edge driver for patch checking (only used when API key is provided)
+          if [ -n "$EDGE_DRIVER_PATH" ]; then
+            CMD_ARGS+=("--edge-driver" "$EDGE_DRIVER_PATH")
+          fi
+        else
+          echo "Warning: No NVD API key provided, running in config-only mode"
+          CMD_ARGS+=("--config-only")
+        fi
+
+        # Add optional flags
+        if [ "${{ inputs.reanalyse }}" == "true" ]; then
+          CMD_ARGS+=("--reanalyse")
+        fi
+
+        if [ "${{ inputs.verbose }}" == "true" ]; then
+          CMD_ARGS+=("--verbose")
+        fi
+
+        CMD_ARGS+=("--performance-stats")
+
+        echo "Running: ${CMD_ARGS[*]}"
+        "${CMD_ARGS[@]}"
+
+        # Check if output was created
+        if [ ! -f analyzed-vex.json ]; then
+          echo "Error: Analysis output file not created"
+          exit 1
+        fi
+
+        echo "Analysis completed successfully"
+        echo "output_file=analyzed-vex.json" >> $GITHUB_OUTPUT
+
+        # Extract summary statistics if markdown report was generated
+        if [ -f analyzed-vex-report.md ]; then
+          echo "report_file=analyzed-vex-report.md" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Generate analysis summary
+      id: summary
+      if: always()
+      run: |
+        if [ -f analyzed-vex.json ] && command -v jq &> /dev/null; then
+          echo "## VEX Analysis Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Count vulnerabilities by status
+          TOTAL=$(jq '.vulnerabilities | length' analyzed-vex.json)
+          echo "**Total Vulnerabilities:** $TOTAL" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Try to extract analysis results
+          EXPLOITABLE=$(jq '[.vulnerabilities[] | select(.analysis.state == "exploitable")] | length' analyzed-vex.json 2>/dev/null || echo "0")
+          NOT_AFFECTED=$(jq '[.vulnerabilities[] | select(.analysis.state == "not_affected")] | length' analyzed-vex.json 2>/dev/null || echo "0")
+          RESOLVED=$(jq '[.vulnerabilities[] | select(.analysis.state == "resolved")] | length' analyzed-vex.json 2>/dev/null || echo "0")
+          
+          echo "| Status | Count |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| ⚠️ Exploitable | $EXPLOITABLE |" >> $GITHUB_STEP_SUMMARY
+          echo "| ✅ Not Affected | $NOT_AFFECTED |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔧 Resolved | $RESOLVED |" >> $GITHUB_STEP_SUMMARY
+          
+          # Add link to artifacts
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📎 Full analysis results available in workflow artifacts" >> $GITHUB_STEP_SUMMARY
+        fi
+    
+    - name: Upload analyzed VEX to deptracker
+      id: upload
+      if: ${{ inputs.upload_enabled == true && steps.analysis.outcome == 'success' }}
+      env:
+        VEX_API_TOKEN: ${{ secrets.VEX_API_TOKEN }}
+      run: |
+        UPLOAD_URL="${{ inputs.upload_url }}"
+
+        if [ -z "$UPLOAD_URL" ]; then
+          echo "Error: Upload enabled but no upload URL provided"
+          exit 1
+        fi
+
+        echo "Uploading analyzed VEX to: $UPLOAD_URL"
+
+        # Upload the file
+        if [ -n "$VEX_API_TOKEN" ]; then
+          HTTP_CODE=$(curl -X POST \
+               -H "Authorization: Bearer $VEX_API_TOKEN" \
+               -H "Content-Type: application/json" \
+               -d @analyzed-vex.json \
+               -w "%{http_code}" \
+               -o upload-response.txt \
+               "$UPLOAD_URL")
+        else
+          HTTP_CODE=$(curl -X POST \
+               -H "Content-Type: application/json" \
+               -d @analyzed-vex.json \
+               -w "%{http_code}" \
+               -o upload-response.txt \
+               "$UPLOAD_URL")
+        fi
+        
+        echo "Upload HTTP status: $HTTP_CODE"
+        cat upload-response.txt
+        
+        if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+          echo "✅ Upload successful"
+          echo "upload_status=success" >> $GITHUB_OUTPUT
+        else
+          echo "❌ Upload failed with status $HTTP_CODE"
+          echo "upload_status=failed" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+    
+    - name: Upload analysis artifacts
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: vex-analysis-results-${{ github.run_number }}
+        path: |
+          input-vex.json
+          analyzed-vex.json
+          analyzed-vex-report.md
+          kernel.config
+        retention-days: 30
+    
+    - name: Comment on PR (if applicable)
+      if: github.event_name == 'pull_request' && steps.analysis.outcome == 'success'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          let comment = '## 🔍 VEX Kernel Analysis Results\n\n';
+          
+          // Try to read the markdown report
+          try {
+            if (fs.existsSync('analyzed-vex-report.md')) {
+              const report = fs.readFileSync('analyzed-vex-report.md', 'utf8');
+              comment += report;
+            } else {
+              comment += 'Analysis completed successfully. See artifacts for details.\n';
+            }
+          } catch (err) {
+            comment += 'Analysis completed. Could not read report file.\n';
+          }
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
+    
+    - name: Create job summary
+      if: always()
+      run: |
+        echo "## 📊 Workflow Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- **VEX File:** ${{ steps.fetch-vex.outputs.vex_file }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Vulnerabilities:** ${{ steps.fetch-vex.outputs.vuln_count }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Kernel Config:** ${{ steps.kernel-config.outputs.config_file }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Analysis Status:** ${{ steps.analysis.outcome }}" >> $GITHUB_STEP_SUMMARY
+        if [ "${{ inputs.upload_enabled }}" == "true" ]; then
+          echo "- **Upload Status:** ${{ steps.upload.outputs.upload_status }}" >> $GITHUB_STEP_SUMMARY
+        fi
+
+  # Optional: Notification job
+  notify:
+    runs-on: ubuntu-latest
+    needs: analyze-vex
+    if: always()
+    steps:
+    - name: Send notification
+      run: |
+        echo "Analysis workflow completed with status: ${{ needs.analyze-vex.result }}"
+        # Add notification logic here (Slack, email, etc.)
