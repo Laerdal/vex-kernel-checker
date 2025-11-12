@@ -231,15 +231,16 @@ class ReportGenerator(VexKernelCheckerBase):
 
         # Show risk level
         risk_level = report.get("summary", {}).get("risk_level", "unknown")
+        black_circle = "\u26ab"  # Black circle emoji - can't use backslash in f-string
         risk_emoji = {
             "high": "🔴",
             "medium": "🟡",
             "low": "🟢",
             "minimal": "⚪",
-            "unknown": "\u26ab",  # Black circle emoji
+            "unknown": black_circle,
         }
         print(
-            f'🎯 Risk level: {risk_emoji.get(risk_level, "\u26ab")} {risk_level.upper()}'
+            f"🎯 Risk level: {risk_emoji.get(risk_level, black_circle)} {risk_level.upper()}"
         )
 
         # Show severity breakdown if available
