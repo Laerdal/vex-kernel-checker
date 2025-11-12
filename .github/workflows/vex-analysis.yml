@@ -144,12 +144,15 @@ jobs:
         # Determine the URL to use (input overrides default)
         VEX_URL="${{ inputs.vex_url }}"
         if [ -z "$VEX_URL" ]; then
-          # Use repository variable if available, otherwise use example
+          # Use repository variable if available
           VEX_URL="${DEFAULT_VEX_URL}"
           if [ -z "$VEX_URL" ]; then
-            echo "Warning: No vex URL configured. Set vex_url repository variable or provide via input."
-            echo "Using example URL for demonstration"
-            VEX_URL="https://example.com/api/vex"
+            echo "Error: No VEX URL configured"
+            echo "Please either:"
+            echo "  1. Provide 'vex_url' as workflow input, OR"
+            echo "  2. Set 'vex_url' as a repository variable"
+            echo "See .github/workflows/README.md for configuration instructions"
+            exit 1
           fi
         fi
 
