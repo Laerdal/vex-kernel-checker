@@ -101,7 +101,9 @@ class TestVulnerabilityAnalysis(unittest.TestCase):
         expected = {
             "state": "exploitable",
             "justification": "requires_configuration",
-            "response": ["can_not_fix"],  # Per CycloneDX 1.5 spec, response must be array
+            "response": [
+                "can_not_fix"
+            ],  # Per CycloneDX 1.5 spec, response must be array
             "detail": "All required configs enabled",
             "lastUpdated": "2025-01-01T12:00:00Z",
         }

@@ -147,22 +147,22 @@ class TestSaveVexFile(unittest.TestCase):
                         "state": "exploitable",
                         "justification": "requires_configuration",
                         "response": ["can_not_fix"],
-                        "detail": "Test vulnerability with unicode: kernel's BPF"
-                    }
+                        "detail": "Test vulnerability with unicode: kernel's BPF",
+                    },
                 }
-            ]
+            ],
         }
 
     def test_save_vex_file_formatting(self):
         """Test that save_vex_file uses correct JSON formatting."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             temp_path = f.name
 
         try:
             VexKernelCheckerBase.save_vex_file(self.test_data, temp_path)
 
             # Read the file and check formatting
-            with open(temp_path, 'r', encoding='utf-8') as f:
+            with open(temp_path, "r", encoding="utf-8") as f:
                 content = f.read()
 
             # Check for space before and after colon (Dependency Tracker format)
@@ -175,15 +175,17 @@ class TestSaveVexFile(unittest.TestCase):
 
             # Check Unicode characters are preserved (not escaped)
             self.assertIn("kernel's", content)
-            self.assertNotIn(r'\u2019', content)
+            self.assertNotIn(r"\u2019", content)
 
             # Check no trailing spaces (line should end with comma or quote, not comma-space)
-            lines = content.split('\n')
+            lines = content.split("\n")
             for i, line in enumerate(lines):
                 # Allow final newline
                 if i < len(lines) - 1:
-                    self.assertFalse(line.endswith(' '), 
-                                   f"Line {i+1} has trailing space: {repr(line)}")
+                    self.assertFalse(
+                        line.endswith(" "),
+                        f"Line {i+1} has trailing space: {repr(line)}",
+                    )
 
         finally:
             if os.path.exists(temp_path):
@@ -192,20 +194,21 @@ class TestSaveVexFile(unittest.TestCase):
     def test_save_vex_file_response_array(self):
         """Test that response field is always saved as an array."""
         import json
-        
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             temp_path = f.name
 
         try:
             VexKernelCheckerBase.save_vex_file(self.test_data, temp_path)
 
             # Load and verify structure
-            with open(temp_path, 'r', encoding='utf-8') as f:
+            with open(temp_path, "r", encoding="utf-8") as f:
                 loaded_data = json.load(f)
 
-            response = loaded_data['vulnerabilities'][0]['analysis']['response']
-            self.assertIsInstance(response, list, 
-                                "Response field must be an array per CycloneDX 1.5 spec")
+            response = loaded_data["vulnerabilities"][0]["analysis"]["response"]
+            self.assertIsInstance(
+                response, list, "Response field must be an array per CycloneDX 1.5 spec"
+            )
             self.assertEqual(response, ["can_not_fix"])
 
         finally:
@@ -215,39 +218,56 @@ class TestSaveVexFile(unittest.TestCase):
     def test_save_vex_file_cyclonedx_compliance(self):
         """Test that saved file is CycloneDX 1.5 compliant."""
         import json
-        
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             temp_path = f.name
 
         try:
             VexKernelCheckerBase.save_vex_file(self.test_data, temp_path)
 
             # Load and verify CycloneDX compliance
-            with open(temp_path, 'r', encoding='utf-8') as f:
+            with open(temp_path, "r", encoding="utf-8") as f:
                 loaded_data = json.load(f)
 
             # Check required fields
-            self.assertEqual(loaded_data['bomFormat'], 'CycloneDX')
-            self.assertEqual(loaded_data['specVersion'], '1.5')
-            self.assertIn('version', loaded_data)
+            self.assertEqual(loaded_data["bomFormat"], "CycloneDX")
+            self.assertEqual(loaded_data["specVersion"], "1.5")
+            self.assertIn("version", loaded_data)
 
             # Check analysis values are valid
-            analysis = loaded_data['vulnerabilities'][0]['analysis']
-            
-            valid_states = ['resolved', 'resolved_with_pedigree', 'exploitable',
-                          'in_triage', 'false_positive', 'not_affected']
-            self.assertIn(analysis['state'], valid_states)
+            analysis = loaded_data["vulnerabilities"][0]["analysis"]
 
-            valid_justifications = ['code_not_present', 'code_not_reachable',
-                                   'requires_configuration', 'requires_dependency',
-                                   'requires_environment', 'protected_by_compiler',
-                                   'protected_at_runtime', 'protected_at_perimeter',
-                                   'protected_by_mitigating_control']
-            self.assertIn(analysis['justification'], valid_justifications)
+            valid_states = [
+                "resolved",
+                "resolved_with_pedigree",
+                "exploitable",
+                "in_triage",
+                "false_positive",
+                "not_affected",
+            ]
+            self.assertIn(analysis["state"], valid_states)
 
-            valid_responses = ['can_not_fix', 'will_not_fix', 'update',
-                             'rollback', 'workaround_available']
-            for resp in analysis['response']:
+            valid_justifications = [
+                "code_not_present",
+                "code_not_reachable",
+                "requires_configuration",
+                "requires_dependency",
+                "requires_environment",
+                "protected_by_compiler",
+                "protected_at_runtime",
+                "protected_at_perimeter",
+                "protected_by_mitigating_control",
+            ]
+            self.assertIn(analysis["justification"], valid_justifications)
+
+            valid_responses = [
+                "can_not_fix",
+                "will_not_fix",
+                "update",
+                "rollback",
+                "workaround_available",
+            ]
+            for resp in analysis["response"]:
                 self.assertIn(resp, valid_responses)
 
         finally:

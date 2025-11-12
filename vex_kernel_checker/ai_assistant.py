@@ -25,7 +25,7 @@ class AIAssistant(VexKernelCheckerBase):
         model: str = "gpt-4",
         provider: str = "openai",
         max_retries: int = 3,
-        **kwargs
+        **kwargs,
     ):
         """Initialize the AI Assistant.
 
@@ -38,14 +38,14 @@ class AIAssistant(VexKernelCheckerBase):
         """
         super().__init__(**kwargs)
         self.logger = get_logger(__name__)
-        
+
         self.provider = provider.lower()
         self.model = model
         self.max_retries = max_retries
         self.api_key = api_key or self._get_api_key_from_env()
         self.client = None
         self.enabled = False
-        
+
         if self.api_key:
             self._initialize_client()
         else:
@@ -64,14 +64,18 @@ class AIAssistant(VexKernelCheckerBase):
         try:
             if self.provider == "openai":
                 import openai
+
                 self.client = openai.OpenAI(api_key=self.api_key)
                 self.enabled = True
                 self.logger.info(f"AI Assistant initialized with OpenAI ({self.model})")
             elif self.provider == "anthropic":
                 import anthropic
+
                 self.client = anthropic.Anthropic(api_key=self.api_key)
                 self.enabled = True
-                self.logger.info(f"AI Assistant initialized with Anthropic ({self.model})")
+                self.logger.info(
+                    f"AI Assistant initialized with Anthropic ({self.model})"
+                )
             else:
                 self.logger.warning(f"Unsupported AI provider: {self.provider}")
         except ImportError as e:
@@ -86,7 +90,7 @@ class AIAssistant(VexKernelCheckerBase):
         cve_id: str,
         description: str,
         kernel_config: Optional[Dict[str, bool]] = None,
-        architecture: Optional[str] = None
+        architecture: Optional[str] = None,
     ) -> Tuple[bool, str, float]:
         """Use AI to analyze if a CVE is relevant to the kernel configuration.
 
@@ -104,17 +108,21 @@ class AIAssistant(VexKernelCheckerBase):
 
         # Build context
         context = f"CVE ID: {cve_id}\n\nDescription: {description}\n\n"
-        
+
         if architecture:
             context += f"Target Architecture: {architecture}\n"
-        
+
         if kernel_config:
             # Include relevant config options
             config_summary = []
-            for key, value in list(kernel_config.items())[:20]:  # Limit to avoid token overflow
+            for key, value in list(kernel_config.items())[
+                :20
+            ]:  # Limit to avoid token overflow
                 config_summary.append(f"{key}={'enabled' if value else 'disabled'}")
             if config_summary:
-                context += f"\nKernel Configuration (sample):\n" + "\n".join(config_summary)
+                context += f"\nKernel Configuration (sample):\n" + "\n".join(
+                    config_summary
+                )
 
         prompt = f"""Analyze this Linux kernel CVE and determine if it's relevant to the given configuration.
 
@@ -138,15 +146,17 @@ Respond in JSON format:
         try:
             response = self._call_ai_api(prompt)
             result = json.loads(response)
-            
+
             is_relevant = result.get("is_relevant", False)
             reasoning = result.get("reasoning", "No reasoning provided")
             confidence = float(result.get("confidence", 0.5))
-            
-            self.logger.debug(f"AI analysis for {cve_id}: relevant={is_relevant}, confidence={confidence}")
-            
+
+            self.logger.debug(
+                f"AI analysis for {cve_id}: relevant={is_relevant}, confidence={confidence}"
+            )
+
             return is_relevant, reasoning, confidence
-            
+
         except json.JSONDecodeError:
             self.logger.warning(f"Failed to parse AI response for {cve_id}")
             return False, "AI response parsing failed", 0.0
@@ -161,7 +171,7 @@ Respond in JSON format:
         description: str,
         severity: str,
         patch_available: bool = False,
-        config_options: Optional[List[str]] = None
+        config_options: Optional[List[str]] = None,
     ) -> str:
         """Generate AI-powered mitigation recommendations.
 
@@ -212,7 +222,7 @@ Keep the response concise and practical (max 200 words)."""
         cve_id: str,
         description: str,
         current_analysis: Optional[Dict[str, Any]] = None,
-        kernel_config: Optional[Dict[str, bool]] = None
+        kernel_config: Optional[Dict[str, bool]] = None,
     ) -> Dict[str, Any]:
         """Enhance existing vulnerability analysis with AI insights.
 
@@ -229,33 +239,35 @@ Keep the response concise and practical (max 200 words)."""
             return current_analysis or {}
 
         enhanced = current_analysis.copy() if current_analysis else {}
-        
+
         # Get AI relevance analysis
         is_relevant, reasoning, confidence = self.analyze_cve_relevance(
             cve_id, description, kernel_config
         )
-        
+
         # Add AI insights to analysis
-        enhanced['ai_analysis'] = {
-            'is_relevant': is_relevant,
-            'reasoning': reasoning,
-            'confidence': confidence,
-            'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+        enhanced["ai_analysis"] = {
+            "is_relevant": is_relevant,
+            "reasoning": reasoning,
+            "confidence": confidence,
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }
-        
+
         # If high confidence and conflicts with existing analysis, flag for review
         if confidence > 0.8 and current_analysis:
-            current_state = current_analysis.get('state')
+            current_state = current_analysis.get("state")
             ai_suggests_exploitable = is_relevant and confidence > 0.8
-            current_says_not_affected = current_state == VulnerabilityState.NOT_AFFECTED.value
-            
+            current_says_not_affected = (
+                current_state == VulnerabilityState.NOT_AFFECTED.value
+            )
+
             if ai_suggests_exploitable and current_says_not_affected:
-                enhanced['ai_analysis']['review_recommended'] = True
-                enhanced['ai_analysis']['conflict'] = (
+                enhanced["ai_analysis"]["review_recommended"] = True
+                enhanced["ai_analysis"]["conflict"] = (
                     "AI analysis suggests vulnerability may be relevant, "
                     "but current analysis marked as not affected"
                 )
-        
+
         return enhanced
 
     def _call_ai_api(self, prompt: str) -> str:
@@ -275,27 +287,27 @@ Keep the response concise and practical (max 200 words)."""
                         messages=[
                             {
                                 "role": "system",
-                                "content": "You are a Linux kernel security expert helping analyze CVE vulnerabilities."
+                                "content": "You are a Linux kernel security expert helping analyze CVE vulnerabilities.",
                             },
-                            {"role": "user", "content": prompt}
+                            {"role": "user", "content": prompt},
                         ],
                         temperature=0.3,
-                        max_tokens=1000
+                        max_tokens=1000,
                     )
                     return response.choices[0].message.content
-                    
+
                 elif self.provider == "anthropic":
                     response = self.client.messages.create(
                         model=self.model,
                         max_tokens=1000,
-                        messages=[{"role": "user", "content": prompt}]
+                        messages=[{"role": "user", "content": prompt}],
                     )
                     return response.content[0].text
-                    
+
             except Exception as e:
                 self.logger.warning(f"AI API call attempt {attempt + 1} failed: {e}")
                 if attempt < self.max_retries - 1:
-                    time.sleep(2 ** attempt)  # Exponential backoff
+                    time.sleep(2**attempt)  # Exponential backoff
                 else:
                     raise
 
@@ -305,7 +317,7 @@ Keep the response concise and practical (max 200 words)."""
         self,
         cve_list: List[Dict[str, Any]],
         kernel_config: Optional[Dict[str, bool]] = None,
-        max_concurrent: int = 5
+        max_concurrent: int = 5,
     ) -> List[Dict[str, Any]]:
         """Analyze multiple CVEs with AI assistance.
 
@@ -322,21 +334,21 @@ Keep the response concise and practical (max 200 words)."""
 
         results = []
         self.logger.info(f"Starting AI batch analysis for {len(cve_list)} CVEs")
-        
+
         for i, cve_data in enumerate(cve_list):
             if i > 0 and i % 10 == 0:
                 self.logger.info(f"AI analyzed {i}/{len(cve_list)} CVEs")
-            
-            cve_id = cve_data.get('id', 'unknown')
-            description = cve_data.get('description', '')
-            
+
+            cve_id = cve_data.get("id", "unknown")
+            description = cve_data.get("description", "")
+
             enhanced = self.enhance_vulnerability_analysis(
                 cve_id, description, cve_data, kernel_config
             )
             results.append(enhanced)
-            
+
             # Rate limiting
             time.sleep(0.5)
-        
+
         self.logger.info(f"AI batch analysis completed: {len(results)} CVEs processed")
         return results

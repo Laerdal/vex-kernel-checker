@@ -33,8 +33,8 @@ class CVEDataManager(VexKernelCheckerBase):
         self.api_key = api_key
 
         if self.verbose:
-            api_status = 'provided' if self.api_key else 'not provided (rate limited)'
-            print(f'CVE Data Manager initialized - API key: {api_status}')
+            api_status = "provided" if self.api_key else "not provided (rate limited)"
+            print(f"CVE Data Manager initialized - API key: {api_status}")
 
     def is_kernel_related_cve(self, cve_info: CVEInfo) -> bool:
         """Check if a CVE is related to the Linux kernel."""
@@ -43,21 +43,21 @@ class CVEDataManager(VexKernelCheckerBase):
 
         description = cve_info.description.lower()
         kernel_keywords = [
-            'linux kernel',
-            'kernel',
-            'linux',
-            'driver',
-            'subsystem',
-            'filesystem',
-            'networking',
-            'memory management',
-            'scheduler',
-            'security module',
-            'kernel module',
-            'device driver',
-            'kernel space',
-            'syscall',
-            'system call',
+            "linux kernel",
+            "kernel",
+            "linux",
+            "driver",
+            "subsystem",
+            "filesystem",
+            "networking",
+            "memory management",
+            "scheduler",
+            "security module",
+            "kernel module",
+            "device driver",
+            "kernel space",
+            "syscall",
+            "system call",
         ]
 
         return any(keyword in description for keyword in kernel_keywords)
@@ -66,28 +66,28 @@ class CVEDataManager(VexKernelCheckerBase):
     def fetch_cve_details(self, cve_id: str) -> Optional[CVEInfo]:
         """Fetch CVE details from NVD API with rate limiting and caching."""
         if self.verbose:
-            print(f'🔍 CVE Manager: fetch_cve_details called for {cve_id}')
+            print(f"🔍 CVE Manager: fetch_cve_details called for {cve_id}")
 
         # Check for interrupt before starting
         check_interrupt()
 
         # Check cache first
-        cache_key = f'cve_{cve_id}'
+        cache_key = f"cve_{cve_id}"
         if cache_key in self._config_cache:
             if self.verbose:
-                print(f'🔍 CVE Manager: Found {cve_id} in cache, returning cached data')
-            self._record_cache_hit('config')
+                print(f"🔍 CVE Manager: Found {cve_id} in cache, returning cached data")
+            self._record_cache_hit("config")
             return self._config_cache[cache_key]
 
         if self.verbose:
-            print(f'🔍 CVE Manager: {cve_id} not in cache, will fetch from NVD API')
-        self._record_cache_miss('config')
+            print(f"🔍 CVE Manager: {cve_id} not in cache, will fetch from NVD API")
+        self._record_cache_miss("config")
 
-        base_url = 'https://services.nvd.nist.gov/rest/json/cves/2.0'
-        params = {'cveId': cve_id}
+        base_url = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+        params = {"cveId": cve_id}
 
         if self.api_key:
-            headers = {'apiKey': self.api_key}
+            headers = {"apiKey": self.api_key}
         else:
             headers = {}
 
@@ -97,7 +97,7 @@ class CVEDataManager(VexKernelCheckerBase):
             try:
                 if self.verbose:
                     print(
-                        f'Fetching CVE details for {cve_id} from NVD API (attempt {attempt + 1})'
+                        f"Fetching CVE details for {cve_id} from NVD API (attempt {attempt + 1})"
                     )
 
                 response = requests.get(
@@ -107,56 +107,56 @@ class CVEDataManager(VexKernelCheckerBase):
                 if response.status_code == 200:
                     data = response.json()
 
-                    if 'vulnerabilities' in data and data['vulnerabilities']:
-                        vuln_data = data['vulnerabilities'][0]['cve']
+                    if "vulnerabilities" in data and data["vulnerabilities"]:
+                        vuln_data = data["vulnerabilities"][0]["cve"]
 
                         # Extract CVE information
                         cve_info = CVEInfo(
                             cve_id=cve_id,
-                            description=vuln_data.get('descriptions', [{}])[0].get(
-                                'value', ""
+                            description=vuln_data.get("descriptions", [{}])[0].get(
+                                "value", ""
                             ),
-                            published_date=vuln_data.get('published', ''),
-                            modified_date=vuln_data.get('lastModified', ''),
+                            published_date=vuln_data.get("published", ""),
+                            modified_date=vuln_data.get("lastModified", ""),
                         )
 
                         # Extract severity and CVSS if available
-                        metrics = vuln_data.get('metrics', {})
-                        if 'cvssMetricV31' in metrics and metrics['cvssMetricV31']:
-                            cvss_data = metrics['cvssMetricV31'][0]['cvssData']
-                            cve_info.cvss_score = cvss_data.get('baseScore')
+                        metrics = vuln_data.get("metrics", {})
+                        if "cvssMetricV31" in metrics and metrics["cvssMetricV31"]:
+                            cvss_data = metrics["cvssMetricV31"][0]["cvssData"]
+                            cve_info.cvss_score = cvss_data.get("baseScore")
                             cve_info.severity = cvss_data.get(
-                                'baseSeverity', ""
+                                "baseSeverity", ""
                             ).upper()
-                        elif 'cvssMetricV30' in metrics and metrics['cvssMetricV30']:
-                            cvss_data = metrics['cvssMetricV30'][0]['cvssData']
-                            cve_info.cvss_score = cvss_data.get('baseScore')
+                        elif "cvssMetricV30" in metrics and metrics["cvssMetricV30"]:
+                            cvss_data = metrics["cvssMetricV30"][0]["cvssData"]
+                            cve_info.cvss_score = cvss_data.get("baseScore")
                             cve_info.severity = cvss_data.get(
-                                'baseSeverity', ""
+                                "baseSeverity", ""
                             ).upper()
-                        elif 'cvssMetricV2' in metrics and metrics['cvssMetricV2']:
-                            cvss_data = metrics['cvssMetricV2'][0]['cvssData']
-                            cve_info.cvss_score = cvss_data.get('baseScore')
+                        elif "cvssMetricV2" in metrics and metrics["cvssMetricV2"]:
+                            cvss_data = metrics["cvssMetricV2"][0]["cvssData"]
+                            cve_info.cvss_score = cvss_data.get("baseScore")
                             # Map CVSS v2 severity
-                            score = cvss_data.get('baseScore', 0)
+                            score = cvss_data.get("baseScore", 0)
                             if score >= 7.0:
-                                cve_info.severity = 'HIGH'
+                                cve_info.severity = "HIGH"
                             elif score >= 4.0:
-                                cve_info.severity = 'MEDIUM'
+                                cve_info.severity = "MEDIUM"
                             else:
-                                cve_info.severity = 'LOW'
+                                cve_info.severity = "LOW"
 
                         # Extract patch URLs from references
                         patch_urls = []
-                        references = vuln_data.get('references', [])
+                        references = vuln_data.get("references", [])
                         for ref in references:
-                            url = ref.get('url', '')
+                            url = ref.get("url", "")
                             if any(
                                 domain in url
                                 for domain in [
-                                    'git.kernel.org',
-                                    'github.com',
-                                    'gitlab.com',
+                                    "git.kernel.org",
+                                    "github.com",
+                                    "gitlab.com",
                                 ]
                             ):
                                 patch_urls.append(url)
@@ -167,31 +167,31 @@ class CVEDataManager(VexKernelCheckerBase):
                         self._config_cache[cache_key] = cve_info
 
                         if self.verbose:
-                            print(f'Successfully fetched CVE details for {cve_id}')
+                            print(f"Successfully fetched CVE details for {cve_id}")
 
                         return cve_info
                     else:
                         if self.verbose:
-                            print(f'No CVE data found for {cve_id}')
+                            print(f"No CVE data found for {cve_id}")
                         return None
 
                 elif response.status_code == 429:  # Rate limited
                     backoff_time = self.API_BACKOFF_FACTOR**attempt
                     if self.verbose:
                         print(
-                            f'Rate limited by NVD API, backing off for {backoff_time}s'
+                            f"Rate limited by NVD API, backing off for {backoff_time}s"
                         )
                     self._interruptible_sleep(backoff_time)
                     continue
 
                 elif response.status_code == 404:
                     if self.verbose:
-                        print(f'CVE {cve_id} not found in NVD')
+                        print(f"CVE {cve_id} not found in NVD")
                     return None
 
                 else:
                     if self.verbose:
-                        print(f'NVD API error {response.status_code}: {response.text}')
+                        print(f"NVD API error {response.status_code}: {response.text}")
 
                     if attempt < self.API_MAX_RETRIES - 1:
                         backoff_time = self.API_BACKOFF_FACTOR**attempt
@@ -202,7 +202,7 @@ class CVEDataManager(VexKernelCheckerBase):
 
             except requests.exceptions.RequestException as e:
                 if self.verbose:
-                    print(f'Network error fetching CVE {cve_id}: {e}')
+                    print(f"Network error fetching CVE {cve_id}: {e}")
 
                 if attempt < self.API_MAX_RETRIES - 1:
                     backoff_time = self.API_BACKOFF_FACTOR**attempt
@@ -232,7 +232,7 @@ class CVEDataManager(VexKernelCheckerBase):
             if self._url_ignored(url):
                 continue
 
-            if 'github.com' in url:
+            if "github.com" in url:
                 return url
 
         alternative_urls = self.get_alternative_patch_urls(cve_info.patch_urls[0])
@@ -247,7 +247,7 @@ class CVEDataManager(VexKernelCheckerBase):
             if self._url_ignored(url):
                 continue
 
-            if 'git.kernel.org' in url:
+            if "git.kernel.org" in url:
                 return url
 
         # Fall back to any non-ignored URL
@@ -277,9 +277,9 @@ class CVEDataManager(VexKernelCheckerBase):
 
         # Prioritize GitHub URLs first (better API availability and reliability)
         github_templates = [
-            f'https://github.com/torvalds/linux/commit/{commit_id}.patch',
-            f'https://github.com/torvalds/linux/commit/{commit_id}.diff',
-            f'https://github.com/torvalds/linux/commit/{commit_id}',
+            f"https://github.com/torvalds/linux/commit/{commit_id}.patch",
+            f"https://github.com/torvalds/linux/commit/{commit_id}.diff",
+            f"https://github.com/torvalds/linux/commit/{commit_id}",
         ]
 
         # Add the converted GitHub URL at the very beginning if available and different
@@ -294,9 +294,9 @@ class CVEDataManager(VexKernelCheckerBase):
 
         # Then kernel.org URLs
         kernel_org_templates = [
-            f'https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/patch/?id={commit_id}',
-            f'https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/patch/?id={commit_id}',
-            f'https://git.kernel.org/pub/scm/linux/kernel/git/next/linux-next.git/patch/?id={commit_id}',
+            f"https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/patch/?id={commit_id}",
+            f"https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/patch/?id={commit_id}",
+            f"https://git.kernel.org/pub/scm/linux/kernel/git/next/linux-next.git/patch/?id={commit_id}",
         ]
 
         # Add kernel.org templates
@@ -314,12 +314,12 @@ class CVEDataManager(VexKernelCheckerBase):
 
         # Common patterns for commit IDs in URLs
         patterns = [
-            r'commit/([a-f0-9]{40})',  # GitHub commit
-            r'commit/([a-f0-9]{8,40})',  # Shorter commit hashes
-            r'id=([a-f0-9]{40})',  # kernel.org format
-            r'id=([a-f0-9]{8,40})',  # kernel.org shorter
-            r'/([a-f0-9]{40})\.patch',  # Direct patch format
-            r'/([a-f0-9]{40})\.diff',  # Direct diff format
+            r"commit/([a-f0-9]{40})",  # GitHub commit
+            r"commit/([a-f0-9]{8,40})",  # Shorter commit hashes
+            r"id=([a-f0-9]{40})",  # kernel.org format
+            r"id=([a-f0-9]{8,40})",  # kernel.org shorter
+            r"/([a-f0-9]{40})\.patch",  # Direct patch format
+            r"/([a-f0-9]{40})\.diff",  # Direct diff format
         ]
 
         for pattern in patterns:
@@ -331,7 +331,7 @@ class CVEDataManager(VexKernelCheckerBase):
 
     def _convert_kernel_org_to_github(self, url: str, commit_id: str) -> Optional[str]:
         """Convert kernel.org URLs to GitHub equivalents when possible."""
-        if 'git.kernel.org' in url and commit_id:
+        if "git.kernel.org" in url and commit_id:
             # Try to convert to GitHub format
-            return f'https://github.com/torvalds/linux/commit/{commit_id}.patch'
+            return f"https://github.com/torvalds/linux/commit/{commit_id}.patch"
         return None
