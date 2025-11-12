@@ -30,7 +30,7 @@ test:  ## Run all tests
 	$(PYTHON) $(TESTS_DIR)/run_tests.py
 
 test-quick:  ## Run quick smoke tests
-	$(PYTHON) $(TESTS_DIR)/run_tests.py --quick
+	$(PYTHON) $(TESTS_DIR)/run_tests.py --smoke
 
 test-coverage:  ## Run tests with coverage reporting
 	$(PYTHON) $(TESTS_DIR)/run_tests.py --coverage
