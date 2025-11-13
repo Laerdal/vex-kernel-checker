@@ -67,10 +67,12 @@ vex-kernel-checker/
 
 ### 🔍 **Comprehensive Analysis**
 - **Kernel CVE filtering**: Automatically identifies and analyzes only kernel-related CVEs (use `--analyze-all-cves` to override)
+- **Driver-specific CONFIG detection**: Intelligently extracts specific driver configs (e.g., `CONFIG_DRM_XE`) from CVE descriptions to avoid false positives from broad parent configs (e.g., `CONFIG_DRM`)
 - **GitHub-prioritized patch analysis**: Fetches and analyzes security patches with GitHub as the primary source for reliability
 - **Config-only fallback**: Graceful degradation when patch data unavailable
 - **Makefile intelligence**: Recursive parsing with variable expansion
 - **Architecture filtering**: ARM-focused analysis with multi-arch support
+- **AI-assisted triage** (optional): Uses Claude AI to reduce manual triage by analyzing CVE relevance against actual kernel configuration
 
 ### 🛡️ **Robust & Reliable**
 - Thread-safe NVD API rate limiting with exponential backoff
@@ -294,14 +296,33 @@ Input VEX files should follow this structure:
 ```
 
 ### Analysis States
+
+The tool uses CycloneDX v1.6 vulnerability states:
+
 - **`not_affected`**: Vulnerability does not affect this kernel configuration
-- **`affected`**: Vulnerability affects this kernel configuration
-- **`under_investigation`**: Manual review required
+- **`exploitable`**: Vulnerability affects this kernel configuration and requires attention
+- **`in_triage`**: CVE has been analyzed but requires manual review to determine impact
+- **`resolved`**: Vulnerability has been patched or mitigated
+- **`resolved_with_pedigree`**: Resolved with additional tracking information
+- **`false_positive`**: Incorrectly identified as a vulnerability
+
+### Report Categories
+
+When viewing analysis reports, CVEs are categorized as:
+
+- **✅ Not Affected**: Vulnerable code/component not present or not configured
+- **🔧 Resolved**: Security patch already applied or vulnerability mitigated
+- **⚠️ Exploitable**: Requires immediate attention - vulnerable and exploitable
+- **🔍 In Triage**: Analyzed but needs manual review to determine exact impact
+- **❓ Unanalyzed**: Not yet analyzed (run without `--cve-id` filter to analyze all)
+- **❌ False Positive**: Incorrectly flagged (rare)
 
 ### Justification Types
-- **`component_not_present`**: Vulnerable component not compiled
-- **`vulnerable_code_not_present`**: Vulnerable code not included
+- **`code_not_present`**: Vulnerable component/code not compiled or included
+- **`vulnerable_code_not_present`**: Specific vulnerable code path not present
 - **`requires_configuration`**: Specific configuration needed for vulnerability
+- **`requires_dependency`**: External dependency required for vulnerability
+- **`requires_environment`**: Specific runtime environment needed
 
 ## Performance & Caching
 

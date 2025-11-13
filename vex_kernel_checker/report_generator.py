@@ -7,6 +7,14 @@ This module handles generating various types of reports:
 - Detailed analysis reports
 - VEX format output
 - Performance reports
+
+The report generator tracks vulnerabilities in the following categories:
+- not_affected: Vulnerable code/component not present
+- exploitable: Requires immediate attention
+- in_triage: Analyzed but needs manual review
+- resolved: Patched or mitigated
+- false_positive: Incorrectly identified
+- unanalyzed: Not yet analyzed (separate from in_triage)
 """
 
 # flake8: noqa: SC200
@@ -54,6 +62,7 @@ class ReportGenerator(VexKernelCheckerBase):
             "in_triage": 0,
             "false_positive": 0,
             "not_affected": 0,
+            "unanalyzed": 0,  # CVEs without any analysis
             "summary": {},
             "vulnerabilities": {},
             "by_severity": {},
@@ -84,11 +93,11 @@ class ReportGenerator(VexKernelCheckerBase):
             elif state == VulnerabilityState.NOT_AFFECTED.value:
                 report["not_affected"] += 1
             elif state == "":
-                # Empty state means CVE was not processed/analyzed - count as in_triage for reporting
-                report["in_triage"] += 1
+                # Empty state means CVE was not processed/analyzed - count separately
+                report["unanalyzed"] += 1
             else:
-                # Default unknown states to in_triage
-                report["in_triage"] += 1
+                # Default unknown states to unanalyzed (not in_triage, since they haven't been analyzed yet)
+                report["unanalyzed"] += 1
 
             # Store vulnerability details
             vuln_details = {
@@ -132,6 +141,7 @@ class ReportGenerator(VexKernelCheckerBase):
                 "in_triage": report["in_triage"],
                 "false_positive": report["false_positive"],
                 "not_affected": report["not_affected"],
+                "unanalyzed": report["unanalyzed"],
             },
             "risk_level": self._calculate_risk_level(report),
             "recommendations": self._generate_recommendations(report),
@@ -214,6 +224,7 @@ class ReportGenerator(VexKernelCheckerBase):
         in_triage = report.get("in_triage", 0)
         false_positive = report.get("false_positive", 0)
         not_affected = report.get("not_affected", 0)
+        unanalyzed = report.get("unanalyzed", 0)
 
         print("\n📊 VULNERABILITY ANALYSIS SUMMARY")
         print(f'{"="*50}')
@@ -223,7 +234,8 @@ class ReportGenerator(VexKernelCheckerBase):
         print(f"├─ 🔧📋 Resolved with pedigree: {resolved_with_pedigree}")
         print(f"├─ ⚠️  Exploitable: {exploitable}")
         print(f"├─ ❌ False positive: {false_positive}")
-        print(f"└─ 🔍 In triage: {in_triage}")
+        print(f"├─ 🔍 In triage: {in_triage}")
+        print(f"└─ ❓ Unanalyzed: {unanalyzed}")
 
         if total > 0:
             completion_rate = report.get("analysis_coverage", 0)

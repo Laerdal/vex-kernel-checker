@@ -871,8 +871,21 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
 
             # Additional intelligence for specific subsystems
             if "drivers/gpu/drm" in makefile_path:
-                # Graphics drivers
-                configs.add(f"CONFIG_DRM_{base_name.upper()}")
+                # Graphics drivers - extract the driver directory name
+                # For example: drivers/gpu/drm/xe/xe_devcoredump.c -> CONFIG_DRM_XE
+                # For example: drivers/gpu/drm/i915/i915_drv.c -> CONFIG_DRM_I915
+                try:
+                    path_parts = makefile_path.split(os.sep)
+                    drm_index = path_parts.index('drm')
+                    # The next part after 'drm' is the driver subdirectory (e.g., 'xe', 'i915')
+                    if drm_index + 1 < len(path_parts):
+                        driver_subdir = path_parts[drm_index + 1]
+                        # Only use directory name if it's not the Makefile itself
+                        if driver_subdir and driver_subdir != 'Makefile':
+                            configs.add(f"CONFIG_DRM_{driver_subdir.upper()}")
+                except (ValueError, IndexError):
+                    # Fallback to base_name if path parsing fails
+                    configs.add(f"CONFIG_DRM_{base_name.upper()}")
             elif "drivers/net/wireless" in makefile_path:
                 # Wireless drivers
                 configs.add("CONFIG_WLAN")

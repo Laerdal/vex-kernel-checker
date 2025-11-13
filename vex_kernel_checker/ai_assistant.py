@@ -113,31 +113,61 @@ class AIAssistant(VexKernelCheckerBase):
             context += f"Target Architecture: {architecture}\n"
 
         if kernel_config:
-            # Include relevant config options
+            # Include relevant config options with smart selection
             config_summary = []
-            for key, value in list(kernel_config.items())[
-                :20
-            ]:  # Limit to avoid token overflow
-                config_summary.append(f"{key}={'enabled' if value else 'disabled'}")
+
+            # First, try to identify keywords from CVE description that might relate to configs
+            desc_lower = description.lower()
+            keywords = []
+
+            # Extract potential subsystem/component names from description
+            for word in desc_lower.split():
+                if len(word) > 3 and word.isalpha():
+                    keywords.append(word.upper())
+
+            # Prioritize configs that might be relevant to this CVE
+            relevant_configs = []
+            other_configs = []
+
+            for key, value in kernel_config.items():
+                # Check if config key contains any keywords from CVE
+                is_relevant = any(keyword in key for keyword in keywords[:10])
+
+                if is_relevant:
+                    relevant_configs.append(f"{key}={'enabled' if value else 'disabled'}")
+                else:
+                    other_configs.append(f"{key}={'enabled' if value else 'disabled'}")
+
+            # Include relevant configs first, then fill with others
+            config_summary = relevant_configs[:15] + other_configs[:30]
+
             if config_summary:
-                context += f"\nKernel Configuration (sample):\n" + "\n".join(
-                    config_summary
+                context += f"\nKernel Configuration ({len(config_summary)} of {len(kernel_config)} configs shown):\n" + "\n".join(
+                    config_summary[:45]  # Max 45 configs to avoid token limit
                 )
+                context += f"\n\nIMPORTANT: If required CONFIG options are not shown above as 'enabled', assume they are DISABLED."
 
         prompt = f"""Analyze this Linux kernel CVE and determine if it's relevant to the given configuration.
 
 {context}
 
+CRITICAL RULES:
+1. ONLY mark as relevant (is_relevant=true) if the CVE's required kernel components/subsystems are ACTUALLY ENABLED in the provided configuration
+2. If you see a CONFIG option is 'disabled' or not listed, assume the component is NOT present
+3. Do NOT assume components are "typically enabled" - verify against the actual config shown
+4. Architecture-specific CVEs must match the target architecture exactly
+5. If the CVE requires specific CONFIG options (like CONFIG_BPF_SYSCALL, CONFIG_NET, etc.), they MUST be shown as 'enabled' in the config
+
 Consider:
 1. Does the CVE affect Linux kernel components?
-2. Are the affected components likely present in this configuration?
-3. Does the architecture match any architecture-specific vulnerabilities?
-4. Is this a driver, subsystem, or core kernel issue?
+2. Are the REQUIRED components ACTUALLY ENABLED in this specific configuration?
+3. Does the target architecture match any architecture-specific requirements?
+4. Can you identify the specific CONFIG options needed? Are they enabled?
 
 Respond in JSON format:
 {{
     "is_relevant": true/false,
-    "reasoning": "brief explanation of why it is or isn't relevant",
+    "reasoning": "brief explanation including which CONFIG options were checked",
     "confidence": 0.0-1.0,
     "affected_components": ["list", "of", "components"],
     "recommended_action": "what should be done"
@@ -145,7 +175,18 @@ Respond in JSON format:
 
         try:
             response = self._call_ai_api(prompt)
-            result = json.loads(response)
+
+            # Clean up response - remove markdown code blocks if present
+            response_text = response.strip()
+            if response_text.startswith("```json"):
+                response_text = response_text[7:]  # Remove ```json
+            elif response_text.startswith("```"):
+                response_text = response_text[3:]  # Remove ```
+            if response_text.endswith("```"):
+                response_text = response_text[:-3]  # Remove trailing ```
+            response_text = response_text.strip()
+
+            result = json.loads(response_text)
 
             is_relevant = result.get("is_relevant", False)
             reasoning = result.get("reasoning", "No reasoning provided")
@@ -157,8 +198,9 @@ Respond in JSON format:
 
             return is_relevant, reasoning, confidence
 
-        except json.JSONDecodeError:
-            self.logger.warning(f"Failed to parse AI response for {cve_id}")
+        except json.JSONDecodeError as e:
+            self.logger.warning(f"Failed to parse AI response for {cve_id}: {e}")
+            self.logger.debug(f"Raw response: {response[:200]}")
             return False, "AI response parsing failed", 0.0
         except Exception as e:
             self.logger.error(f"AI analysis failed for {cve_id}: {e}")

@@ -175,7 +175,7 @@ def load_config_file(config_path: str) -> Dict:
 
 
 def merge_config_with_args(
-    config: Dict, args: argparse.Namespace
+    config: Dict, args: argparse.Namespace, parser: argparse.ArgumentParser = None
 ) -> argparse.Namespace:
     """
     Merge configuration file values with command-line arguments.
@@ -185,11 +185,29 @@ def merge_config_with_args(
     Args:
         config: Configuration dictionary from file
         args: Parsed command-line arguments
+        parser: Argument parser to check defaults (optional)
 
     Returns:
         Updated argument namespace
     """
     logger = get_logger(__name__)
+
+    # Get defaults from parser if provided
+    parser_defaults = {}
+    if parser:
+        for action in parser._actions:
+            if action.dest != 'help':
+                parser_defaults[action.dest] = action.default
+
+    # Get command-line arguments (those explicitly provided by user)
+    # We'll assume that if a value matches the parser default and wasn't in config,
+    # it wasn't explicitly provided by the user
+    import sys
+    cli_args = set()
+    for i, arg in enumerate(sys.argv[1:]):
+        if arg.startswith('--'):
+            arg_name = arg.lstrip('--').replace('-', '_')
+            cli_args.add(arg_name)
 
     # Create a copy of args to avoid modifying the original
     merged_args = argparse.Namespace(**vars(args))
@@ -205,7 +223,12 @@ def merge_config_with_args(
             print(f"Warning: Unknown configuration option: {key}")
             continue
 
-        # Only use config value if command-line argument is not set/is default
+        # Skip if this argument was explicitly provided on command line
+        if attr_key in cli_args:
+            logger.debug(f"Skipping {attr_key} from config (CLI takes precedence)")
+            continue
+
+        # Apply config value
         current_value = getattr(merged_args, attr_key)
 
         # For boolean flags, only set if current value is False
@@ -213,8 +236,8 @@ def merge_config_with_args(
             if not current_value and value:
                 setattr(merged_args, attr_key, value)
                 logger.debug(f"Set {attr_key} from config: {value}")
-        # For other values, only set if current value is None or empty
-        elif current_value is None or current_value == "":
+        # For other values, set from config (CLI wasn't provided)
+        else:
             setattr(merged_args, attr_key, value)
             logger.debug(f"Set {attr_key} from config: {value}")
 
@@ -347,6 +370,7 @@ def print_final_summary(report: Dict) -> None:
     exploitable_count = report.get("exploitable", 0)
     not_affected_count = report.get("not_affected", 0)
     in_triage_count = report.get("in_triage", 0)
+    unanalyzed_count = report.get("unanalyzed", 0)
     resolved_count = report.get("resolved", 0)
     resolved_with_pedigree_count = report.get("resolved_with_pedigree", 0)
     false_positive_count = report.get("false_positive", 0)
@@ -354,7 +378,7 @@ def print_final_summary(report: Dict) -> None:
 
     # Calculate coverage
     analysis_coverage = report.get("analysis_coverage", 0.0)
-    analyzed_count = total_count - in_triage_count if total_count > 0 else 0
+    analyzed_count = total_count - unanalyzed_count if total_count > 0 else 0
 
     print("\n" + "=" * 60)
     print("🎯 ANALYSIS SUMMARY")
@@ -640,6 +664,8 @@ def setup_checker(args, arch):
             print(f"✅ AI Assistant ready ({args.ai_provider}: {args.ai_model})")
             logger.info(f"AI Assistant initialized with {args.ai_provider}")
             checker.ai_assistant = ai_assistant
+            # Also set it on the vulnerability analyzer for triage assistance
+            checker.vulnerability_analyzer.ai_assistant = ai_assistant
         else:
             print(
                 "⚠️  AI Assistant could not be initialized (check API key and dependencies)"
@@ -750,8 +776,9 @@ def generate_markdown_report(report: Dict, output_file: str) -> str:
     resolved_with_pedigree = report.get("resolved_with_pedigree", 0)
     false_positive = report.get("false_positive", 0)
     in_triage = report.get("in_triage", 0)
+    unanalyzed = report.get("unanalyzed", 0)
     analysis_coverage = report.get("analysis_coverage", 0.0)
-    analyzed_count = total - in_triage if total > 0 else 0
+    analyzed_count = total - unanalyzed if total > 0 else 0
     risk_level = report.get("summary", {}).get("risk_level", "unknown")
 
     # Calculate metrics
@@ -803,6 +830,7 @@ def generate_markdown_report(report: Dict, output_file: str) -> str:
         )
         md_content += f"| ❌ False Positive | {false_positive} | {(false_positive/total)*100:.1f}% |\n"
         md_content += f"| 🔍 In Triage | {in_triage} | {(in_triage/total)*100:.1f}% |\n"
+        md_content += f"| ❓ Unanalyzed | {unanalyzed} | {(unanalyzed/total)*100:.1f}% |\n"
 
     md_content += "\n"
 
@@ -848,6 +876,12 @@ def generate_markdown_report(report: Dict, output_file: str) -> str:
     if in_triage > 0:
         md_content += "## 🔍 Manual Review Required\n\n"
         md_content += f"**{in_triage} vulnerabilities** require manual review to determine their impact.\n\n"
+
+    # Unanalyzed section
+    if unanalyzed > 0:
+        md_content += "## ❓ Unanalyzed Vulnerabilities\n\n"
+        md_content += f"**{unanalyzed} vulnerabilities** have not been analyzed yet. "
+        md_content += "Run the analysis without `--cve-id` filter to analyze all CVEs.\n\n"
 
     # Recommendations section
     recommendations = report.get("summary", {}).get("recommendations", [])
@@ -960,7 +994,7 @@ def main() -> int:
         config = load_config_file(args.config)
 
         # Merge configuration with command-line arguments
-        args = merge_config_with_args(config, args)
+        args = merge_config_with_args(config, args, parser)
 
         logger.info("Configuration loaded and merged with command-line arguments")
         if args.verbose:

@@ -84,12 +84,14 @@ class VexKernelChecker(VexKernelCheckerBase):
             verbose=verbose, arch=arch, performance_tracker=self.perf_tracker, **kwargs
         )
 
+        # Note: ai_assistant will be set later if enabled
         self.vulnerability_analyzer = VulnerabilityAnalyzer(
             verbose=verbose,
             arch=arch,
             performance_tracker=self.perf_tracker,
             check_patches=check_patches,
             analyze_all_cves=analyze_all_cves,
+            ai_assistant=kwargs.get('ai_assistant'),
             **kwargs,
         )
 

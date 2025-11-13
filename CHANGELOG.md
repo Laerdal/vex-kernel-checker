@@ -8,7 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Driver-specific CONFIG detection** - Extracts specific driver CONFIG options (e.g., `CONFIG_DRM_XE`, `CONFIG_USB_NET_LAN78XX`) from CVE descriptions to avoid false positives from broad parent configs
+- **Unanalyzed CVE tracking** - Separate reporting category for CVEs that haven't been analyzed yet, distinct from "in_triage"
 - Preparation for standalone repository release
+
+### Fixed
+- False positives where CVEs for specific drivers were marked as exploitable based only on parent CONFIG options (e.g., xe driver CVEs marked exploitable because CONFIG_DRM was enabled)
+- Misleading "in_triage" count that included unanalyzed CVEs; now properly categorized as "unanalyzed"
+
+### Changed
+- Improved report clarity by distinguishing between "In Triage" (analyzed but needs manual review) and "Unanalyzed" (not yet analyzed)
 
 ## [1.0.0] - 2025-07-05
 
