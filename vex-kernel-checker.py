@@ -96,12 +96,18 @@ def load_config_file(config_path: str) -> Dict:
                     "log-file",
                     "edge-driver",
                 ]:
-                    # Expand user home directory (~) and convert to absolute path
+                    # Expand user home directory (~)
                     expanded_value = os.path.expanduser(str(value))
-                    # Convert relative paths to absolute (relative to config file location)
+
+                    # Input files: relative to config file location
+                    # Output files: relative to current working directory
                     if not os.path.isabs(expanded_value):
-                        config_dir = os.path.dirname(os.path.abspath(config_path))
-                        expanded_value = os.path.join(config_dir, expanded_value)
+                        if cli_key in ["vex-file", "kernel-config", "kernel-source", "edge-driver"]:
+                            # Input files are relative to config file location
+                            config_dir = os.path.dirname(os.path.abspath(config_path))
+                            expanded_value = os.path.join(config_dir, expanded_value)
+                        # else: output and log-file remain relative to current working directory
+
                     config[cli_key] = expanded_value
                     logger.debug(f"Expanded path for {cli_key}: {expanded_value}")
                 else:
@@ -138,12 +144,18 @@ def load_config_file(config_path: str) -> Dict:
                         "log-file",
                         "edge-driver",
                     ]:
-                        # Expand user home directory (~) and convert to absolute path
+                        # Expand user home directory (~)
                         expanded_value = os.path.expanduser(value)
-                        # Convert relative paths to absolute (relative to config file location)
+
+                        # Input files: relative to config file location
+                        # Output files: relative to current working directory
                         if not os.path.isabs(expanded_value):
-                            config_dir = os.path.dirname(os.path.abspath(config_path))
-                            expanded_value = os.path.join(config_dir, expanded_value)
+                            if cli_key in ["vex-file", "kernel-config", "kernel-source", "edge-driver"]:
+                                # Input files are relative to config file location
+                                config_dir = os.path.dirname(os.path.abspath(config_path))
+                                expanded_value = os.path.join(config_dir, expanded_value)
+                            # else: output and log-file remain relative to current working directory
+
                         config[cli_key] = expanded_value
                         logger.debug(f"Expanded path for {cli_key}: {expanded_value}")
                     else:

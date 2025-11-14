@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Improved report clarity by distinguishing between "In Triage" (analyzed but needs manual review) and "Unanalyzed" (not yet analyzed)
+- **Path resolution in config files**: Output and log file paths are now relative to current working directory (where command is executed), while input file paths remain relative to config file location
 
 ## [1.0.0] - 2025-07-05
 

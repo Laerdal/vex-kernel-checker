@@ -128,6 +128,12 @@ python3 vex-kernel-checker.py --create-config my-config.ini
 python3 vex-kernel-checker.py --config my-config.ini
 ```
 
+**Path Resolution in Config Files:**
+- **Input paths** (vex-file, kernel-config, kernel-source, edge-driver): Relative paths are resolved relative to the config file location
+- **Output paths** (output, log-file): Relative paths are resolved relative to the current working directory where you run the command
+
+This allows you to store config files anywhere and have outputs generated in your current working directory.
+
 ### Full Analysis (with patch checking)
 ```bash
 python3 vex-kernel-checker.py \
