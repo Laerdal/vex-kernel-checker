@@ -328,7 +328,43 @@ When viewing analysis reports, CVEs are categorized as:
 - **`vulnerable_code_not_present`**: Specific vulnerable code path not present
 - **`requires_configuration`**: Specific configuration needed for vulnerability
 - **`requires_dependency`**: External dependency required for vulnerability
-- **`requires_environment`**: Specific runtime environment needed
+- **`requires_environment`**: Specific runtime environment needed (e.g., network access, local shell)
+
+## Attack Vector Filtering
+
+Filter out CVEs based on CVSS attack vector requirements. This is useful for embedded devices with restricted access:
+
+```bash
+# Device has no local shell access (e.g., SSH requires certificate auth) - filter out AV:L CVEs
+python3 vex-kernel-checker.py --config my-config.json --no-local-access
+
+# Device is network-isolated - filter out AV:A and AV:N CVEs
+python3 vex-kernel-checker.py --config my-config.json --no-adjacent-network --no-network-access
+
+# Device has no network at all - filter out all network-based CVEs
+python3 vex-kernel-checker.py --config my-config.json --no-network-access
+```
+
+### Attack Vector Options
+
+| Option | Description | CVSS Attack Vector |
+|--------|-------------|-------------------|
+| `--no-local-access` | No local shell access (e.g., SSH requires certificate auth) | AV:L (Local) |
+| `--no-adjacent-network` | Device is network-isolated from adjacent systems | AV:A (Adjacent) |
+| `--no-network-access` | Device has no network connectivity | AV:N (Network) |
+
+CVEs filtered by attack vector are marked as `not_affected` with justification `requires_environment`.
+
+### Configuration File
+
+You can also set these in your JSON config file:
+```json
+{
+  "local_access": false,
+  "adjacent_network": true,
+  "network_access": true
+}
+```
 
 ## Performance & Caching
 

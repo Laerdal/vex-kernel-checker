@@ -274,7 +274,9 @@ class VexKernelChecker(VexKernelCheckerBase):
                             f"  Skipping {cve_id_current} - not kernel related or analysis failed"
                         )
 
-                    # If reanalyzing, remove existing analysis for skipped CVEs
+                    # Preserve existing analysis for non-kernel CVEs
+                    # Only remove analysis if it was previously analyzed by this tool
+                    # (i.e., has kernel-specific justifications)
                     if reanalyse:
                         vuln_index = None
                         for idx, orig_vuln in enumerate(
@@ -284,18 +286,48 @@ class VexKernelChecker(VexKernelCheckerBase):
                                 vuln_index = idx
                                 break
 
-                        if (
-                            vuln_index is not None
-                            and "analysis"
-                            in updated_vex_data["vulnerabilities"][vuln_index]
-                        ):
-                            del updated_vex_data["vulnerabilities"][vuln_index][
-                                "analysis"
-                            ]
-                            if self.verbose:
-                                print(
-                                    f"    Removed existing analysis from {cve_id_current}"
+                        if vuln_index is not None:
+                            existing_analysis = updated_vex_data["vulnerabilities"][
+                                vuln_index
+                            ].get("analysis")
+                            if existing_analysis:
+                                # Check if this was a kernel-specific analysis
+                                # by looking for kernel-related justifications
+                                detail = existing_analysis.get("detail", "")
+                                justification = existing_analysis.get(
+                                    "justification", ""
                                 )
+                                is_kernel_analysis = any(
+                                    keyword in detail.lower()
+                                    for keyword in [
+                                        "config_",
+                                        "kernel",
+                                        "driver",
+                                        "module",
+                                        "kconfig",
+                                        "av:l",
+                                        "av:a",
+                                        "av:n",
+                                    ]
+                                ) or justification in [
+                                    "code_not_present",
+                                    "vulnerable_code_not_present",
+                                    "requires_configuration",
+                                    "requires_environment",
+                                ]
+
+                                if is_kernel_analysis:
+                                    del updated_vex_data["vulnerabilities"][
+                                        vuln_index
+                                    ]["analysis"]
+                                    if self.verbose:
+                                        print(
+                                            f"    Removed kernel analysis from {cve_id_current}"
+                                        )
+                                elif self.verbose:
+                                    print(
+                                        f"    Preserved non-kernel analysis for {cve_id_current}"
+                                    )
 
             except Exception as e:
                 if self.verbose:

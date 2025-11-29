@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Attack vector filtering** - Mark CVEs as not_affected based on CVSS attack vector requirements:
+
+  - `--no-local-access`: Skip CVEs requiring local shell access (AV:L) for devices where SSH requires certificate auth or has no console
+  - `--no-adjacent-network`: Skip CVEs requiring adjacent network access (AV:A) for isolated devices
+  - `--no-network-access`: Skip CVEs requiring network access (AV:N) for offline devices
+  - Also configurable via `local_access`, `adjacent_network`, `network_access` in config files
 - **Driver-specific CONFIG detection** - Extracts specific driver CONFIG options (e.g., `CONFIG_DRM_XE`, `CONFIG_USB_NET_LAN78XX`) from CVE descriptions to avoid false positives from broad parent configs
 - **Unanalyzed CVE tracking** - Separate reporting category for CVEs that haven't been analyzed yet, distinct from "in_triage"
 - Preparation for standalone repository release
@@ -15,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - False positives where CVEs for specific drivers were marked as exploitable based only on parent CONFIG options (e.g., xe driver CVEs marked exploitable because CONFIG_DRM was enabled)
 - Misleading "in_triage" count that included unanalyzed CVEs; now properly categorized as "unanalyzed"
+- `--reanalyse` now preserves non-kernel analysis (e.g., userspace CVEs analyzed by other tools); only removes kernel-specific analysis
 
 ### Changed
 - Improved report clarity by distinguishing between "In Triage" (analyzed but needs manual review) and "Unanalyzed" (not yet analyzed)

@@ -75,8 +75,13 @@ Thumbs.db
 *.tmp
 *.temp
 *.log
+log*.txt
 temp_*
 tmp_*
+
+# VEX output files
+*-vex.cdx.*
+*-vex.cdx-*
 
 # Selenium WebDriver
 chromedriver

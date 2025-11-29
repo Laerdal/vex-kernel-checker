@@ -581,6 +581,41 @@ def setup_argument_parser() -> argparse.ArgumentParser:
         help="AI model to use (default: gpt-4 for OpenAI, claude-3-opus for Anthropic)",
     )
 
+    # Attack vector filtering options
+    parser.add_argument(
+        "--local-access",
+        action="store_true",
+        default=True,
+        help="Local shell access is available on the device (default: True)",
+    )
+    parser.add_argument(
+        "--no-local-access",
+        action="store_true",
+        help="No local shell access available (e.g., SSH requires certificate auth, no console). CVEs requiring AV:L will be marked not_affected",
+    )
+    parser.add_argument(
+        "--adjacent-network",
+        action="store_true",
+        default=True,
+        help="Device is on a network accessible by adjacent systems (default: True)",
+    )
+    parser.add_argument(
+        "--no-adjacent-network",
+        action="store_true",
+        help="Device is network-isolated from adjacent systems. CVEs requiring AV:A will be marked not_affected",
+    )
+    parser.add_argument(
+        "--network-access",
+        action="store_true",
+        default=True,
+        help="Device is accessible from the network/internet (default: True)",
+    )
+    parser.add_argument(
+        "--no-network-access",
+        action="store_true",
+        help="Device has no network connectivity. CVEs requiring AV:N will be marked not_affected",
+    )
+
     return parser
 
 
@@ -647,6 +682,20 @@ def setup_checker(args, arch):
     logger.debug(f"Edge driver path: {args.edge_driver}")
     logger.debug(f"AI enabled: {args.ai_enabled}")
 
+    # Determine attack vector access settings
+    # --no-xxx flags override the default True settings
+    local_access = not args.no_local_access
+    adjacent_network = not args.no_adjacent_network
+    network_access = not args.no_network_access
+
+    if args.verbose:
+        if not local_access:
+            print("⚡ Attack vector filter: Local access (AV:L) disabled")
+        if not adjacent_network:
+            print("⚡ Attack vector filter: Adjacent network (AV:A) disabled")
+        if not network_access:
+            print("⚡ Attack vector filter: Network access (AV:N) disabled")
+
     print("Initializing VEX Kernel Checker...")
     checker = VexKernelChecker(
         verbose=args.verbose,
@@ -656,6 +705,9 @@ def setup_checker(args, arch):
         analyze_all_cves=args.analyze_all_cves,
         arch=arch,  # Use the architecture detected from config
         detailed_timing=args.detailed_timing,
+        local_access=local_access,
+        adjacent_network=adjacent_network,
+        network_access=network_access,
     )
 
     # Initialize AI assistant if enabled
