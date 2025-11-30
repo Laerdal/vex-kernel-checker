@@ -130,15 +130,6 @@ doc:  ## Generate documentation (placeholder)
 	@echo "  - tests/README.md (testing documentation)"
 	@echo "  - docs/ directory (additional documentation)"
 
-release-check:  ## Run all checks before release
-	@echo "Running release checks..."
-	make clean
-	make test-coverage
-	make lint
-	make format-check
-	make benchmark-quiet
-	@echo "Release checks completed successfully!"
-
 # CI/CD targets
 ci-test:  ## Run tests for CI/CD
 	make test-coverage
