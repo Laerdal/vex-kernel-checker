@@ -2,10 +2,7 @@ requests>=2.25.0
 selenium>=4.0.0
 beautifulsoup4>=4.9.0
 lxml>=4.6.0
-argparse>=1.4.0
 
 # Optional AI dependencies (for AI assistant features)
-# Install with: pip install -r requirements.txt openai anthropic
-# or: pip install vex-kernel-checker[ai]
-openai>=1.0.0; extra == 'ai'
-anthropic>=0.18.0; extra == 'ai'
+# Install with: pip install vex-kernel-checker[ai]
+# Or manually: pip install openai anthropic

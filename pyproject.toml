@@ -1,0 +1,108 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vex-kernel-checker"
+version = "2.1.0"
+description = "A sophisticated tool for analyzing CVE vulnerabilities against Linux kernel configurations"
+readme = "README.md"
+license = "MIT"
+authors = [
+    {name = "Karsten S. Opdal", email = "karsten.opdal@laerdal.com"}
+]
+maintainers = [
+    {name = "Laerdal Medical", email = "support@laerdal.com"}
+]
+keywords = ["cve", "vulnerability", "linux", "kernel", "security", "vex", "sbom", "cyclonedx"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: Software Development :: Testing",
+    "Topic :: System :: Operating System Kernels :: Linux",
+    "Topic :: System :: Systems Administration",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "requests>=2.25.0",
+    "selenium>=4.0.0",
+    "beautifulsoup4>=4.9.0",
+    "lxml>=4.6.0",
+]
+
+[project.optional-dependencies]
+ai = [
+    "openai>=1.0.0",
+    "anthropic>=0.18.0",
+]
+dev = [
+    "pytest>=6.0",
+    "pytest-cov>=2.0",
+    "black>=21.0",
+    "flake8>=3.8",
+    "mypy>=0.800",
+]
+docs = [
+    "sphinx>=4.0",
+    "sphinx-rtd-theme>=0.5",
+]
+all = [
+    "vex-kernel-checker[ai,dev,docs]",
+]
+
+[project.scripts]
+vex-kernel-checker = "vex_kernel_checker.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/laerdal/vex-kernel-checker"
+Documentation = "https://github.com/laerdal/vex-kernel-checker/blob/main/README.md"
+Repository = "https://github.com/laerdal/vex-kernel-checker.git"
+Issues = "https://github.com/laerdal/vex-kernel-checker/issues"
+Changelog = "https://github.com/laerdal/vex-kernel-checker/blob/main/CHANGELOG.md"
+
+[tool.setuptools]
+packages = ["vex_kernel_checker"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+"*" = ["README.md", "LICENSE", "requirements.txt"]
+
+[tool.black]
+line-length = 100
+target-version = ['py38', 'py39', 'py310', 'py311', 'py312']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+'''
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"

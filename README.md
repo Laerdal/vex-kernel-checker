@@ -100,7 +100,28 @@ vex-kernel-checker/
 - Linux environment (tested on Ubuntu/Debian)
 - Internet connection for CVE data fetching
 
-### Required Python Packages
+### Install from PyPI (recommended)
+```bash
+pip install vex-kernel-checker
+
+# With AI assistant support (OpenAI/Anthropic)
+pip install vex-kernel-checker[ai]
+
+# With all optional dependencies
+pip install vex-kernel-checker[all]
+```
+
+### Install from source
+```bash
+git clone https://github.com/laerdal/vex-kernel-checker.git
+cd vex-kernel-checker
+pip install -e .
+
+# Or with AI support
+pip install -e ".[ai]"
+```
+
+### Manual dependency installation
 ```bash
 pip install requests selenium beautifulsoup4 lxml
 ```
@@ -111,21 +132,25 @@ pip install requests selenium beautifulsoup4 lxml
 
 ## Quick Start
 
+After installation, use `vex-kernel-checker` command (or `vex-kernel-checker` if running from source).
+
 ### Basic Usage (Config-only analysis)
+
 ```bash
-python3 vex-kernel-checker.py \
+vex-kernel-checker \
   --vex-file vulnerabilities.json \
   --kernel-config /boot/config-$(uname -r) \
   --kernel-source /lib/modules/$(uname -r)/build
 ```
 
 ### Using Configuration Files (Recommended)
+
 ```bash
 # Create a configuration file
-python3 vex-kernel-checker.py --create-config my-config.ini
+vex-kernel-checker --create-config my-config.ini
 
 # Edit the file with your settings, then run
-python3 vex-kernel-checker.py --config my-config.ini
+vex-kernel-checker --config my-config.ini
 ```
 
 **Path Resolution in Config Files:**
@@ -135,8 +160,9 @@ python3 vex-kernel-checker.py --config my-config.ini
 This allows you to store config files anywhere and have outputs generated in your current working directory.
 
 ### Full Analysis (with patch checking)
+
 ```bash
-python3 vex-kernel-checker.py \
+vex-kernel-checker \
   --vex-file vulnerabilities.json \
   --kernel-config /path/to/kernel/.config \
   --kernel-source /path/to/kernel/source \
@@ -145,22 +171,17 @@ python3 vex-kernel-checker.py \
   --verbose
 ```
 
-### Using Configuration Files
+### Override Config Settings
+
 ```bash
-# Create a sample configuration file
-python3 vex-kernel-checker.py --create-config my-config.ini
-
-# Edit the configuration file with your settings
-# Then run with the configuration file
-python3 vex-kernel-checker.py --config my-config.ini
-
 # Override config file settings with command-line arguments
-python3 vex-kernel-checker.py --config my-config.ini --verbose --reanalyse
+vex-kernel-checker --config my-config.ini --verbose --reanalyse
 ```
 
 ### Re-analyze Existing Results
+
 ```bash
-python3 vex-kernel-checker.py \
+vex-kernel-checker \
   --vex-file vulnerabilities.json \
   --kernel-config /path/to/.config \
   --kernel-source /path/to/source \
@@ -204,10 +225,10 @@ The VEX Kernel Checker supports configuration files to simplify usage by storing
 
 ```bash
 # Create a sample INI configuration file
-python3 vex-kernel-checker.py --create-config my-config.ini
+vex-kernel-checker --create-config my-config.ini
 
 # Create a sample JSON configuration file  
-python3 vex-kernel-checker.py --create-config my-config.json --config-format json
+vex-kernel-checker --create-config my-config.json --config-format json
 ```
 
 ### Configuration File Examples
@@ -241,13 +262,13 @@ performance_stats = true
 
 ```bash
 # Use configuration file
-python3 vex-kernel-checker.py --config my-config.ini
+vex-kernel-checker --config my-config.ini
 
 # Override config settings with command-line arguments
-python3 vex-kernel-checker.py --config my-config.ini --verbose --reanalyse
+vex-kernel-checker --config my-config.ini --verbose --reanalyse
 
 # Mix configuration file with additional options
-python3 vex-kernel-checker.py --config my-config.ini --cve-id CVE-2023-1234
+vex-kernel-checker --config my-config.ini --cve-id CVE-2023-1234
 ```
 
 ### Configuration Priority
@@ -336,13 +357,13 @@ Filter out CVEs based on CVSS attack vector requirements. This is useful for emb
 
 ```bash
 # Device has no local shell access (e.g., SSH requires certificate auth) - filter out AV:L CVEs
-python3 vex-kernel-checker.py --config my-config.json --no-local-access
+vex-kernel-checker --config my-config.json --no-local-access
 
 # Device is network-isolated - filter out AV:A and AV:N CVEs
-python3 vex-kernel-checker.py --config my-config.json --no-adjacent-network --no-network-access
+vex-kernel-checker --config my-config.json --no-adjacent-network --no-network-access
 
 # Device has no network at all - filter out all network-based CVEs
-python3 vex-kernel-checker.py --config my-config.json --no-network-access
+vex-kernel-checker --config my-config.json --no-network-access
 ```
 
 ### Attack Vector Options
