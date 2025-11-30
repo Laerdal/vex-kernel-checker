@@ -266,18 +266,23 @@ def create_sample_config_file(config_path: str, format_type: str = "ini") -> Non
     """
     if format_type == "json":
         sample_config = {
-            "vex_file": "/path/to/your/vex-file.json",
-            "kernel_config": "/path/to/your/.config",
-            "kernel_source": "/path/to/your/kernel/source",
-            "api_key": "your-nvd-api-key",
-            "edge_driver": "/path/to/msedgedriver",
+            "vex-file": "/path/to/your/vex-file.json",
+            "kernel-config": "/path/to/your/.config",
+            "kernel-source": "/path/to/your/kernel/source",
+            "api-key": "your-nvd-api-key",
+            "edge-driver": "/path/to/msedgedriver",
             "verbose": True,
             "reanalyse": False,
-            "config_only": False,
-            "analyze_all_cves": False,
-            "performance_stats": True,
-            "detailed_timing": False,
-            "clear_cache": False,
+            "config-only": False,
+            "analyze-all-cves": False,
+            "performance-stats": True,
+            "detailed-timing": False,
+            "clear-cache": False,
+            "# Dependency-Track integration (optional)": "",
+            "dt-api-url": "",
+            "dt-api-key": "",
+            "dt-project-uuid": "",
+            "dt-upload": False,
         }
 
         with open(config_path, "w", encoding="utf-8") as f:
@@ -285,26 +290,33 @@ def create_sample_config_file(config_path: str, format_type: str = "ini") -> Non
 
     else:  # INI format
         sample_config = """[vex-kernel-checker]
-# Required arguments
-vex_file = /path/to/your/vex-file.json
-kernel_config = /path/to/your/.config
-kernel_source = /path/to/your/kernel/source
+# Required arguments (vex-file not needed if using dt-url)
+vex-file = /path/to/your/vex-file.json
+kernel-config = /path/to/your/.config
+kernel-source = /path/to/your/kernel/source
 
 # Optional arguments
-output = 
-log_file = 
-api_key = your-nvd-api-key
-edge_driver = /path/to/msedgedriver
-cve_id = 
+output =
+log-file =
+api-key = your-nvd-api-key
+edge-driver = /path/to/msedgedriver
+cve-id =
 
 # Boolean flags (true/false)
 verbose = true
 reanalyse = false
-config_only = false
-analyze_all_cves = false
-performance_stats = true
-detailed_timing = false
-clear_cache = false
+config-only = false
+analyze-all-cves = false
+performance-stats = true
+detailed-timing = false
+clear-cache = false
+
+# Dependency-Track integration (optional)
+# Download VEX from and upload results to Dependency-Track
+dt-api-url =
+dt-api-key =
+dt-project-uuid =
+dt-upload = false
 """
 
         with open(config_path, "w", encoding="utf-8") as f:
@@ -319,9 +331,10 @@ def validate_input_files(args) -> bool:
     logger = get_logger(__name__)
 
     # Check if required arguments are provided
-    if not args.vex_file:
-        logger.error("--vex-file is required")
-        print("Error: --vex-file is required")
+    # VEX file can come from --vex-file OR --dt-url
+    if not args.vex_file and not getattr(args, 'dt_url', None):
+        logger.error("--vex-file or --dt-url is required")
+        print("Error: --vex-file or --dt-url is required")
         return False
     if not args.kernel_config:
         logger.error("--kernel-config is required")
@@ -334,11 +347,15 @@ def validate_input_files(args) -> bool:
 
     logger.debug("Validating input files existence")
 
+    # Build validation list - VEX file only if not using DT URL
     validations = [
-        (args.vex_file, "VEX file"),
         (args.kernel_config, "Kernel config file"),
         (args.kernel_source, "Kernel source directory"),
     ]
+
+    # Only validate VEX file if not downloading from Dependency-Track
+    if args.vex_file and not getattr(args, 'dt_url', None):
+        validations.insert(0, (args.vex_file, "VEX file"))
 
     for file_path, description in validations:
         if not os.path.exists(file_path):
@@ -349,9 +366,10 @@ def validate_input_files(args) -> bool:
             logger.debug(f"{description} found: {file_path}")
 
     # Additional validation for file types/formats
-    if not args.vex_file.endswith((".json", ".cdx")):
-        logger.warning(f"VEX file should be JSON or CDX format: {args.vex_file}")
-        print(f"Warning: VEX file should be JSON or CDX format: {args.vex_file}")
+    if args.vex_file and not getattr(args, 'dt_url', None):
+        if not args.vex_file.endswith((".json", ".cdx")):
+            logger.warning(f"VEX file should be JSON or CDX format: {args.vex_file}")
+            print(f"Warning: VEX file should be JSON or CDX format: {args.vex_file}")
 
     logger.info("All input files validated successfully")
     return True
@@ -614,6 +632,49 @@ def setup_argument_parser() -> argparse.ArgumentParser:
         "--no-network-access",
         action="store_true",
         help="Device has no network connectivity. CVEs requiring AV:N will be marked not_affected",
+    )
+
+    # Dependency-Track integration options
+    parser.add_argument(
+        "--dt-url",
+        help="Dependency-Track URL to download VEX from (e.g., https://deptrack.example.com/api/v1/bom/cyclonedx/project/{uuid})",
+    )
+    parser.add_argument(
+        "--dt-api-url",
+        help="Dependency-Track API URL (e.g., https://deptrack.example.com/api)",
+    )
+    parser.add_argument(
+        "--dt-api-key",
+        help="Dependency-Track API key (or set DT_API_KEY env var)",
+    )
+    parser.add_argument(
+        "--dt-project-uuid",
+        help="Dependency-Track project UUID",
+    )
+    parser.add_argument(
+        "--dt-project-name",
+        help="Dependency-Track project name (alternative to UUID)",
+    )
+    parser.add_argument(
+        "--dt-project-version",
+        help="Dependency-Track project version (default: latest)",
+    )
+    parser.add_argument(
+        "--dt-parent-name",
+        help="Dependency-Track parent project name",
+    )
+    parser.add_argument(
+        "--dt-parent-uuid",
+        help="Dependency-Track parent project UUID",
+    )
+    parser.add_argument(
+        "--dt-upload",
+        action="store_true",
+        help="Upload analyzed results back to Dependency-Track",
+    )
+    parser.add_argument(
+        "--dt-upload-url",
+        help="Custom URL for uploading results (defaults to {base-url}/api/v1/bom)",
     )
 
     return parser
@@ -1075,6 +1136,99 @@ def main() -> int:
         logger.debug("Starting VEX Kernel Checker with verbose logging enabled")
         logger.debug(f"Command line arguments: {vars(args)}")
 
+    # Handle Dependency-Track download if specified
+    dt_client = None
+    dt_project_name = getattr(args, 'dt_project_name', None)
+    dt_project_uuid = getattr(args, 'dt_project_uuid', None)
+    dt_url = getattr(args, 'dt_url', None)
+
+    if dt_url or dt_project_uuid or dt_project_name:
+        from vex_kernel_checker.dependency_track import DependencyTrackClient
+
+        # Get API key from args or environment
+        dt_api_key = getattr(args, 'dt_api_key', None) or os.environ.get('DT_API_KEY')
+        if not dt_api_key:
+            logger.error("Dependency-Track API key required (--dt-api-key or DT_API_KEY env var)")
+            print("Error: Dependency-Track API key required (--dt-api-key or DT_API_KEY env var)")
+            return 1
+
+        # Determine API URL
+        dt_api_url = getattr(args, 'dt_api_url', None)
+        if not dt_api_url and dt_url:
+            from urllib.parse import urlparse
+            parsed = urlparse(dt_url)
+            # Extract base URL up to /api if present, otherwise just host
+            path_parts = parsed.path.split('/api/')
+            if len(path_parts) > 1:
+                dt_api_url = f"{parsed.scheme}://{parsed.netloc}/api"
+            else:
+                dt_api_url = f"{parsed.scheme}://{parsed.netloc}"
+
+        if not dt_api_url:
+            logger.error("Dependency-Track API URL required (--dt-api-url)")
+            print("Error: Dependency-Track API URL required (--dt-api-url)")
+            return 1
+
+        dt_client = DependencyTrackClient(
+            api_url=dt_api_url,
+            api_key=dt_api_key,
+            project_uuid=dt_project_uuid,
+            verbose=args.verbose,
+        )
+
+        # If project name given but no UUID, look it up
+        if dt_project_name and not dt_project_uuid and not dt_url:
+            print("\n" + "=" * 60)
+            print("🔍 LOOKING UP PROJECT IN DEPENDENCY-TRACK")
+            print("=" * 60)
+
+            try:
+                project = dt_client.find_project(
+                    name=dt_project_name,
+                    version=getattr(args, 'dt_project_version', None),
+                    parent_name=getattr(args, 'dt_parent_name', None),
+                    parent_uuid=getattr(args, 'dt_parent_uuid', None),
+                )
+
+                if project:
+                    dt_project_uuid = project.get("uuid")
+                    print(f"✅ Found project: {dt_project_name} ({dt_project_uuid})")
+                    if project.get("parent"):
+                        print(f"   Parent: {project['parent'].get('name')}")
+                else:
+                    logger.error(f"Project not found: {dt_project_name}")
+                    print(f"Error: Project not found: {dt_project_name}")
+                    return 1
+
+            except Exception as e:
+                logger.error(f"Failed to lookup project: {e}")
+                print(f"Error: Failed to lookup project: {e}")
+                return 1
+
+        # Download VEX from Dependency-Track
+        print("\n" + "=" * 60)
+        print("📥 DOWNLOADING FROM DEPENDENCY-TRACK")
+        print("=" * 60)
+
+        try:
+            vex_data = dt_client.download_vex(
+                url=dt_url,
+                project_uuid=dt_project_uuid,
+            )
+
+            # Save to temporary file or specified output
+            if not args.vex_file:
+                args.vex_file = "dependency-track-vex.json"
+            with open(args.vex_file, "w", encoding="utf-8") as f:
+                json.dump(vex_data, f, indent=2, ensure_ascii=False)
+            logger.info(f"Downloaded VEX saved to: {args.vex_file}")
+            print(f"💾 Downloaded VEX saved to: {args.vex_file}")
+
+        except Exception as e:
+            logger.error(f"Failed to download from Dependency-Track: {e}")
+            print(f"Error: Failed to download from Dependency-Track: {e}")
+            return 1
+
     # Validate input files
     if not validate_input_files(args):
         return 1
@@ -1087,6 +1241,28 @@ def main() -> int:
 
     try:
         run_analysis_workflow(args, output_file, perf_tracker)
+
+        # Upload results to Dependency-Track if requested
+        if getattr(args, 'dt_upload', False) and dt_client:
+            print("\n" + "=" * 60)
+            print("📤 UPLOADING TO DEPENDENCY-TRACK")
+            print("=" * 60)
+
+            try:
+                # Load the analyzed VEX data
+                with open(output_file, "r", encoding="utf-8") as f:
+                    analyzed_vex = json.load(f)
+
+                dt_client.upload_vex(
+                    analyzed_vex,
+                    url=getattr(args, 'dt_upload_url', None),
+                )
+                print("✅ Successfully uploaded results to Dependency-Track")
+            except Exception as e:
+                logger.error(f"Failed to upload to Dependency-Track: {e}")
+                print(f"Error: Failed to upload to Dependency-Track: {e}")
+                return 1
+
         logger.info("VEX Kernel Checker completed successfully")
         return 0
 

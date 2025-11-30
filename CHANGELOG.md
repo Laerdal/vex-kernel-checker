@@ -8,14 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Dependency-Track integration** - Download VEX from and upload results to Dependency-Track:
+
+  - `--dt-url`: Download VEX directly from Dependency-Track API
+  - `--dt-upload`: Upload analyzed results back to Dependency-Track
+  - `--dt-api-key`: API key authentication (or `DT_API_KEY` env var)
+  - `--dt-project-name`: Look up project by name instead of UUID
+  - `--dt-parent-name`: Support for hierarchical projects with parent lookup
+  - Full round-trip workflow support for automated pipelines
 - **Attack vector filtering** - Mark CVEs as not_affected based on CVSS attack vector requirements:
 
   - `--no-local-access`: Skip CVEs requiring local shell access (AV:L) for devices where SSH requires certificate auth or has no console
   - `--no-adjacent-network`: Skip CVEs requiring adjacent network access (AV:A) for isolated devices
   - `--no-network-access`: Skip CVEs requiring network access (AV:N) for offline devices
-  - Also configurable via `local_access`, `adjacent_network`, `network_access` in config files
+  - Also configurable via `local-access`, `adjacent-network`, `network-access` in config files
 - **Driver-specific CONFIG detection** - Extracts specific driver CONFIG options (e.g., `CONFIG_DRM_XE`, `CONFIG_USB_NET_LAN78XX`) from CVE descriptions to avoid false positives from broad parent configs
 - **Unanalyzed CVE tracking** - Separate reporting category for CVEs that haven't been analyzed yet, distinct from "in_triage"
+- **Python package installer** - Install via `pip install vex-kernel-checker` with PyPI support
 - Preparation for standalone repository release
 
 ### Fixed
@@ -26,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Improved report clarity by distinguishing between "In Triage" (analyzed but needs manual review) and "Unanalyzed" (not yet analyzed)
 - **Path resolution in config files**: Output and log file paths are now relative to current working directory (where command is executed), while input file paths remain relative to config file location
+- **Config file key naming**: Config file keys now use hyphens to match CLI argument names (e.g., `kernel-config` instead of `kernel_config`). Both formats are supported for backward compatibility.
 
 ## [1.0.0] - 2025-07-05
 

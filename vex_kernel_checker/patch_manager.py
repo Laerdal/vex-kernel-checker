@@ -619,6 +619,56 @@ class PatchManager(VexKernelCheckerBase):
 
         return is_applied
 
+    def check_all_patch_files_missing(
+        self, patch_content: str, kernel_source_path: str
+    ) -> bool:
+        """
+        Check if ALL files from a patch are missing from the kernel source.
+
+        This is a strong indicator that the vulnerable code is not present
+        in this kernel version (e.g., driver added in a later kernel version,
+        or architecture-specific code not present for this platform).
+
+        Args:
+            patch_content: The patch content
+            kernel_source_path: Path to the kernel source directory
+
+        Returns:
+            True if ALL patched files are missing from the kernel source
+        """
+        import os
+
+        if not patch_content or not kernel_source_path:
+            return False
+
+        if not os.path.exists(kernel_source_path):
+            return False
+
+        # Extract the file changes from the patch
+        patch_files = self._extract_patch_file_changes(patch_content)
+
+        if not patch_files:
+            return False
+
+        files_missing = 0
+        total_files = len(patch_files)
+
+        for file_path in patch_files.keys():
+            full_file_path = os.path.join(kernel_source_path, file_path)
+            if not os.path.exists(full_file_path):
+                files_missing += 1
+
+        # All files are missing - vulnerable code not present
+        all_missing = files_missing == total_files
+
+        if self.verbose and all_missing:
+            print(
+                f"⚠️  All {total_files} patched files are missing from kernel source - "
+                "vulnerable code not present"
+            )
+
+        return all_missing
+
     def _extract_patch_file_changes(self, patch_content: str) -> dict:
         """
         Extract file changes from patch content.

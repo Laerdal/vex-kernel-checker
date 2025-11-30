@@ -191,6 +191,8 @@ vex-kernel-checker \
 
 ## Command Line Options
 
+### Core Options
+
 | Option | Description | Required |
 |--------|-------------|----------|
 | `--config` | Path to configuration file (.ini, .json, .cfg, .config) | ❌ |
@@ -200,17 +202,54 @@ vex-kernel-checker \
 | `--kernel-config` | Path to kernel config file (.config) | ✅* |
 | `--kernel-source` | Path to kernel source directory | ✅* |
 | `--output` | Output file path (default: update in place) | ❌ |
+| `--log-file` | Log file path for detailed logging | ❌ |
 | `--reanalyse` | Re-analyze CVEs with existing analysis | ❌ |
 | `--cve-id` | Process only specific CVE ID | ❌ |
-| `--verbose` | Enable detailed logging | ❌ |
+| `--verbose`, `-v` | Enable detailed logging | ❌ |
 | `--config-only` | Disable patch checking (faster) | ❌ |
 | `--api-key` | NVD API key for patch analysis | ❌ |
 | `--edge-driver` | Path to Edge WebDriver executable | ❌ |
 | `--clear-cache` | Clear all internal caches | ❌ |
 | `--performance-stats` | Show detailed performance metrics | ❌ |
+| `--detailed-timing` | Show detailed method timing (very verbose) | ❌ |
 | `--analyze-all-cves` | Analyze all CVEs (default: kernel-related only) | ❌ |
 
-**Note:** Options marked with ✅* are required unless provided in a configuration file.
+### AI Assistant Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--ai-enabled` | Enable AI-powered vulnerability analysis | `false` |
+| `--ai-provider` | AI provider: `openai` or `anthropic` | `openai` |
+| `--ai-model` | AI model to use | `gpt-4` |
+| `--ai-api-key` | API key for AI provider (or set env var) | - |
+
+### Attack Vector Filtering Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--local-access` | Local shell access available on device | `true` |
+| `--no-local-access` | No local shell access (filters AV:L CVEs) | - |
+| `--adjacent-network` | Adjacent network access available | `true` |
+| `--no-adjacent-network` | Network-isolated device (filters AV:A CVEs) | - |
+| `--network-access` | Network/internet access available | `true` |
+| `--no-network-access` | No network connectivity (filters AV:N CVEs) | - |
+
+### Dependency-Track Options
+
+| Option | Description |
+|--------|-------------|
+| `--dt-url` | Full URL to download VEX (includes project UUID) |
+| `--dt-api-url` | Dependency-Track API URL (e.g., `https://deptrack.example.com/api`) |
+| `--dt-api-key` | API key for authentication (or set `DT_API_KEY` env var) |
+| `--dt-project-uuid` | Project UUID |
+| `--dt-project-name` | Project name (alternative to UUID) |
+| `--dt-project-version` | Project version (default: latest) |
+| `--dt-parent-name` | Parent project name (for hierarchical projects) |
+| `--dt-parent-uuid` | Parent project UUID |
+| `--dt-upload` | Upload analyzed results back to Dependency-Track |
+| `--dt-upload-url` | Custom upload URL (defaults to `{api-url}/v1/vex`) |
+
+**Note:** Options marked with ✅* are required unless provided in a configuration file or using Dependency-Track integration (`--dt-url` or `--dt-project-name`).
 
 ## Configuration Files
 
@@ -236,27 +275,29 @@ vex-kernel-checker --create-config my-config.json --config-format json
 **INI Format (`my-config.ini`):**
 ```ini
 [vex-kernel-checker]
-vex_file = /path/to/vulnerabilities.json
-kernel_config = /path/to/.config
-kernel_source = /path/to/kernel/source
-api_key = your-nvd-api-key
-edge_driver = /usr/bin/msedgedriver
+vex-file = /path/to/vulnerabilities.json
+kernel-config = /path/to/.config
+kernel-source = /path/to/kernel/source
+api-key = your-nvd-api-key
+edge-driver = /usr/bin/msedgedriver
 verbose = true
-performance_stats = true
+performance-stats = true
 ```
 
 **JSON Format (`my-config.json`):**
 ```json
 {
-  "vex_file": "/path/to/vulnerabilities.json",
-  "kernel_config": "/path/to/.config", 
-  "kernel_source": "/path/to/kernel/source",
-  "api_key": "your-nvd-api-key",
-  "edge_driver": "/usr/bin/msedgedriver",
+  "vex-file": "/path/to/vulnerabilities.json",
+  "kernel-config": "/path/to/.config",
+  "kernel-source": "/path/to/kernel/source",
+  "api-key": "your-nvd-api-key",
+  "edge-driver": "/usr/bin/msedgedriver",
   "verbose": true,
-  "performance_stats": true
+  "performance-stats": true
 }
 ```
+
+> **Note:** Config file keys use hyphens to match CLI argument names (e.g., `kernel-config` matches `--kernel-config`). Underscores are also supported for backward compatibility.
 
 ### Using Configuration Files
 
@@ -381,10 +422,80 @@ CVEs filtered by attack vector are marked as `not_affected` with justification `
 You can also set these in your JSON config file:
 ```json
 {
-  "local_access": false,
-  "adjacent_network": true,
-  "network_access": true
+  "local-access": false,
+  "adjacent-network": true,
+  "network-access": true
 }
+```
+
+## Dependency-Track Integration
+
+VEX Kernel Checker integrates with [Dependency-Track](https://dependencytrack.org/) to download VEX files and upload analysis results.
+
+### Download and Analyze
+
+```bash
+# Download VEX from Dependency-Track, analyze, and save locally
+vex-kernel-checker \
+  --dt-url "https://deptrack.example.com/api/v1/bom/cyclonedx/project/{uuid}" \
+  --dt-api-key "your-api-key" \
+  --kernel-config /path/to/.config \
+  --kernel-source /path/to/kernel/source \
+  --output analyzed-vex.json
+```
+
+### Download, Analyze, and Upload Results
+
+```bash
+# Full round-trip: download, analyze, and upload back to Dependency-Track
+vex-kernel-checker \
+  --dt-url "https://deptrack.example.com/api/v1/bom/cyclonedx/project/{uuid}" \
+  --dt-api-key "your-api-key" \
+  --dt-upload \
+  --kernel-config /path/to/.config \
+  --kernel-source /path/to/kernel/source
+```
+
+### Using Project Name Instead of UUID
+
+```bash
+# Look up project by name (optionally with parent)
+vex-kernel-checker \
+  --dt-api-url "https://deptrack.example.com/api" \
+  --dt-api-key "your-api-key" \
+  --dt-project-name "my-firmware" \
+  --dt-project-version "1.0.0" \
+  --dt-parent-name "my-product" \
+  --dt-upload \
+  --kernel-config /path/to/.config \
+  --kernel-source /path/to/kernel/source
+```
+
+### Dependency-Track Config File
+
+```ini
+[vex-kernel-checker]
+kernel-config = /path/to/.config
+kernel-source = /path/to/kernel/source
+
+# Dependency-Track settings
+dt-api-url = https://deptrack.example.com/api
+dt-api-key = your-api-key
+dt-upload = true
+
+# Option 1: Use project UUID directly
+dt-project-uuid = your-project-uuid
+
+# Option 2: Use project name (with optional parent)
+dt-project-name = my-firmware
+dt-project-version = 1.0.0
+dt-parent-name = my-product
+```
+
+### Environment Variables
+
+```bash
+export DT_API_KEY="your-dependency-track-api-key"
 ```
 
 ## Performance & Caching

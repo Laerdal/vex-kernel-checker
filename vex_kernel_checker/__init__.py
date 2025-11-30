@@ -17,6 +17,7 @@ from .common import (
 )
 from .config_analyzer import ConfigurationAnalyzer
 from .cve_manager import CVEDataManager
+from .dependency_track import DependencyTrackClient
 from .logging_utils import configure_logging, get_logger, is_verbose
 from .main_checker import VexKernelChecker
 from .patch_manager import PatchManager
@@ -37,6 +38,7 @@ __all__ = [
     "ReportGenerator",
     "VexKernelChecker",
     "AIAssistant",
+    "DependencyTrackClient",
     "VulnerabilityState",
     "Justification",
     "Response",
