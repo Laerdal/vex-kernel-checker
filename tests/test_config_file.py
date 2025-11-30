@@ -57,9 +57,9 @@ class TestConfigurationFile(unittest.TestCase):
         with open(self.config_ini_path, "r") as f:
             content = f.read()
             self.assertIn("[vex-kernel-checker]", content)
-            self.assertIn("vex_file =", content)
-            self.assertIn("kernel_config =", content)
-            self.assertIn("kernel_source =", content)
+            self.assertIn("vex-file =", content)
+            self.assertIn("kernel-config =", content)
+            self.assertIn("kernel-source =", content)
 
     def test_create_config_json(self):
         """Test creating a JSON configuration file."""
@@ -82,9 +82,9 @@ class TestConfigurationFile(unittest.TestCase):
         # Check that the file contains valid JSON
         with open(self.config_json_path, "r") as f:
             config_data = json.load(f)
-            self.assertIn("vex_file", config_data)
-            self.assertIn("kernel_config", config_data)
-            self.assertIn("kernel_source", config_data)
+            self.assertIn("vex-file", config_data)
+            self.assertIn("kernel-config", config_data)
+            self.assertIn("kernel-source", config_data)
 
     def test_config_file_validation(self):
         """Test configuration file validation."""
