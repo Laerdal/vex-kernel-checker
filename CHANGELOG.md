@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Driver-specific CONFIG detection** - Extracts specific driver CONFIG options (e.g., `CONFIG_DRM_XE`, `CONFIG_USB_NET_LAN78XX`) from CVE descriptions to avoid false positives from broad parent configs
 - **Unanalyzed CVE tracking** - Separate reporting category for CVEs that haven't been analyzed yet, distinct from "in_triage"
 - **Python package installer** - Install via `pip install vex-kernel-checker` with PyPI support
+- **Release automation script** - `scripts/release.sh` for automating version updates, changelog management, package building, and publishing
 - Preparation for standalone repository release
 
 ### Fixed

@@ -10,7 +10,7 @@ EXAMPLES_DIR := examples
 DOCS_DIR := docs
 
 # Common commands
-.PHONY: help install test test-quick test-coverage test-unit unittest unittest-quiet unittest-module lint format clean benchmark benchmark-quiet ci-benchmark ci-unittest validate setup-dev
+.PHONY: help install test test-quick test-coverage test-unit unittest unittest-quiet unittest-module lint format clean benchmark benchmark-quiet ci-benchmark ci-unittest validate setup-dev release release-check release-dry-run release-push build build-check
 
 help:  ## Show this help message
 	@echo "VEX Kernel Checker - Development Commands"
@@ -169,6 +169,38 @@ workflow-pr:  ## Workflow before creating PR
 	make test-coverage
 	make benchmark-quiet
 	@echo "PR workflow completed successfully!"
+
+# Release targets
+release-check:  ## Run all checks before release
+	./scripts/release.sh --check
+
+release-dry-run:  ## Dry run release (no changes)
+	@if [ -z "$(VERSION)" ]; then \
+		echo "Usage: make release-dry-run VERSION=X.Y.Z"; \
+		exit 1; \
+	fi
+	./scripts/release.sh $(VERSION) --dry-run
+
+release:  ## Create a release (use VERSION=X.Y.Z)
+	@if [ -z "$(VERSION)" ]; then \
+		echo "Usage: make release VERSION=X.Y.Z"; \
+		exit 1; \
+	fi
+	./scripts/release.sh $(VERSION)
+
+release-push:  ## Create and push release (use VERSION=X.Y.Z)
+	@if [ -z "$(VERSION)" ]; then \
+		echo "Usage: make release-push VERSION=X.Y.Z"; \
+		exit 1; \
+	fi
+	./scripts/release.sh $(VERSION) --push
+
+build:  ## Build the package
+	$(PYTHON) -m build
+
+build-check:  ## Build and verify package
+	$(PYTHON) -m build
+	twine check dist/*
 
 # Docker support (placeholder for future)
 docker-build:  ## Build Docker image (placeholder)
