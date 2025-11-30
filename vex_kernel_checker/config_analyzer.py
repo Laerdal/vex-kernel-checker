@@ -85,13 +85,8 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
                     include_patterns = self._resolve_include_pattern(
                         line, makefile_path, makefile_vars
                     )
-                    for include_path in include_patterns[
-                        : self.MAX_INCLUDE_FILES_PER_MAKEFILE
-                    ]:
-                        if (
-                            os.path.exists(include_path)
-                            and include_path not in processed_files
-                        ):
+                    for include_path in include_patterns[: self.MAX_INCLUDE_FILES_PER_MAKEFILE]:
+                        if os.path.exists(include_path) and include_path not in processed_files:
                             included_configs = self._extract_config_recursive_optimized(
                                 include_path, source_file_name, processed_files.copy()
                             )
@@ -134,9 +129,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
         if "*" in expanded_path or "?" in expanded_path:
             try:
                 glob_matches = glob.glob(full_path)
-                resolved_paths.extend(
-                    glob_matches[: self.MAX_INCLUDE_FILES_PER_MAKEFILE]
-                )
+                resolved_paths.extend(glob_matches[: self.MAX_INCLUDE_FILES_PER_MAKEFILE])
             except Exception:
                 pass
         else:
@@ -202,9 +195,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
         return expanded
 
     @timed_method
-    def _find_kconfig_dependencies(
-        self, config_option: str, kernel_source_path: str
-    ) -> Set[str]:
+    def _find_kconfig_dependencies(self, config_option: str, kernel_source_path: str) -> Set[str]:
         """Find Kconfig dependencies for a configuration option."""
         dependencies = set()
 
@@ -222,12 +213,8 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
         kconfig_files = []
         for pattern in kconfig_patterns:
             try:
-                matches = glob.glob(
-                    os.path.join(kernel_source_path, pattern), recursive=True
-                )
-                kconfig_files.extend(
-                    matches[:50]
-                )  # Limit to prevent excessive processing
+                matches = glob.glob(os.path.join(kernel_source_path, pattern), recursive=True)
+                kconfig_files.extend(matches[:50])  # Limit to prevent excessive processing
             except Exception:
                 continue
 
@@ -261,16 +248,12 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
                 # Look for the target config definition
                 if line.startswith("config "):
                     current_config = line.split()[1] if len(line.split()) > 1 else None
-                    in_target_config = current_config == target_config.replace(
-                        "CONFIG_", ""
-                    )
+                    in_target_config = current_config == target_config.replace("CONFIG_", "")
 
                 # Extract dependencies if we're in the target config
                 if in_target_config:
                     if line.startswith("depends on ") or line.startswith("select "):
-                        dep_line = line.replace("depends on ", "").replace(
-                            "select ", ""
-                        )
+                        dep_line = line.replace("depends on ", "").replace("select ", "")
                         # Extract CONFIG_ options from dependency line
                         config_matches = re.findall(r"\b[A-Z0-9_]+\b", dep_line)
                         for match in config_matches:
@@ -297,9 +280,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
         source_file_name = os.path.basename(source_file_path)
 
         # Get configs from this Makefile
-        config_options = self.extract_config_options_from_makefile(
-            makefile_path, source_file_name
-        )
+        config_options = self.extract_config_options_from_makefile(makefile_path, source_file_name)
 
         # Add Kconfig dependencies
         all_configs = set(config_options)
@@ -309,9 +290,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
 
         filtered_configs = self._filter_relevant_config_options(all_configs)
         if self.verbose and filtered_configs:
-            print(
-                f"Found {len(filtered_configs)} config options for {source_file_name}"
-            )
+            print(f"Found {len(filtered_configs)} config options for {source_file_name}")
 
         return filtered_configs
 
@@ -345,24 +324,18 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
                     print(f"Error processing makefile {makefile_path}: {e}")
 
         # Add advanced source-based analysis
-        advanced_configs = self._advanced_config_search(
-            source_file_path, kernel_source_path
-        )
+        advanced_configs = self._advanced_config_search(source_file_path, kernel_source_path)
         config_options.update(advanced_configs)
 
         # Cache result
         self._config_cache[cache_key] = config_options
 
         if self.verbose:
-            print(
-                f"Total {len(config_options)} config options found for {source_file_path}"
-            )
+            print(f"Total {len(config_options)} config options found for {source_file_path}")
 
         return config_options
 
-    def _find_makefiles_fast(
-        self, kernel_source_path: str, source_file_path: str
-    ) -> List[str]:
+    def _find_makefiles_fast(self, kernel_source_path: str, source_file_path: str) -> List[str]:
         """Fast Makefile discovery with intelligent prioritization."""
         makefiles = []
 
@@ -401,9 +374,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
                     for filename in ["Makefile", "Kbuild", "Makefile.am"]:
                         makefile_path = os.path.join(search_dir, filename)
                         if os.path.exists(makefile_path):
-                            priority = self._get_directory_priority(
-                                search_dir, source_file_path
-                            )
+                            priority = self._get_directory_priority(search_dir, source_file_path)
                             makefile_candidates.append((makefile_path, priority))
                 except Exception:
                     continue
@@ -421,9 +392,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
 
         return makefiles
 
-    def _get_directory_priority(
-        self, directory_path: str, source_file_path: str
-    ) -> int:
+    def _get_directory_priority(self, directory_path: str, source_file_path: str) -> int:
         """Calculate priority score for a directory (lower = higher priority)."""
         # Check cache
         cache_key = f"{directory_path}:{source_file_path}"
@@ -485,9 +454,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
 
         return filtered
 
-    def _advanced_config_search(
-        self, source_file_path: str, kernel_source_path: str
-    ) -> Set[str]:
+    def _advanced_config_search(self, source_file_path: str, kernel_source_path: str) -> Set[str]:
         """Advanced configuration search using source file analysis."""
         config_options = set()
 
@@ -583,9 +550,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
             )
         else:
             # No relevant configs are enabled
-            detail = (
-                f'Required configs not enabled: {", ".join(sorted(required_configs))}'
-            )
+            detail = f'Required configs not enabled: {", ".join(sorted(required_configs))}'
 
             return VulnerabilityAnalysis(
                 state=VulnerabilityState.NOT_AFFECTED,
@@ -633,9 +598,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
                             )
 
                 # Also search by folder name patterns
-                folder_configs = self.extract_configs_by_folder_name(
-                    makefile_path, source_dirname
-                )
+                folder_configs = self.extract_configs_by_folder_name(makefile_path, source_dirname)
                 if folder_configs:
                     config_options.update(folder_configs)
                     if self.verbose:
@@ -646,9 +609,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
             # Also check if the file is a full path that already includes kernel_source_path
             if os.path.isabs(source_file_path) and os.path.exists(source_file_path):
                 alternate_makefile_dir = os.path.dirname(source_file_path)
-                alternate_makefile_path = os.path.join(
-                    alternate_makefile_dir, "Makefile"
-                )
+                alternate_makefile_path = os.path.join(alternate_makefile_dir, "Makefile")
                 if (
                     os.path.exists(alternate_makefile_path)
                     and alternate_makefile_path != makefile_path
@@ -691,9 +652,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
             if "Makefile" in source_file_path or source_file_path.endswith(".mk"):
                 full_path = os.path.join(kernel_source_path, source_file_path)
                 if os.path.exists(full_path):
-                    makefile_configs = self.extract_config_options_from_makefile(
-                        full_path, ""
-                    )
+                    makefile_configs = self.extract_config_options_from_makefile(full_path, "")
                     config_options.update(makefile_configs)
 
             # Add folder-based heuristic analysis
@@ -732,9 +691,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
 
         # Convert source filename to object filename for Makefile matching
         obj_filename = source_filename.replace(".c", ".o")
-        base_name = os.path.splitext(source_filename)[
-            0
-        ]  # Get filename without extension
+        base_name = os.path.splitext(source_filename)[0]  # Get filename without extension
         configs = set()
 
         try:
@@ -744,15 +701,11 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
             direct_patterns = [
                 # Match obj-$(CONFIG_XXX) += filename.o
                 re.compile(
-                    r"obj-\$\((CONFIG_[A-Z0-9_]+)\)\s*\+=\s*"
-                    + re.escape(obj_filename)
-                    + r"\b"
+                    r"obj-\$\((CONFIG_[A-Z0-9_]+)\)\s*\+=\s*" + re.escape(obj_filename) + r"\b"
                 ),
                 # Match obj-$(CONFIG_XXX) += filename (without .o)
                 re.compile(
-                    r"obj-\$\((CONFIG_[A-Z0-9_]+)\)\s*\+=\s*"
-                    + re.escape(base_name)
-                    + r"\b"
+                    r"obj-\$\((CONFIG_[A-Z0-9_]+)\)\s*\+=\s*" + re.escape(base_name) + r"\b"
                 ),
                 # Match filename-objs-$(CONFIG_XXX) pattern
                 re.compile(re.escape(base_name) + r"-objs-\$\((CONFIG_[A-Z0-9_]+)\)"),
@@ -765,9 +718,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
 
             # Also look for patterns where filename is in a list
             # e.g., module-objs := file1.o file2.o our_file.o file3.o
-            list_pattern = re.compile(
-                r"([a-zA-Z0-9_]+)(?:-y|-objs|-m).*" + re.escape(obj_filename)
-            )
+            list_pattern = re.compile(r"([a-zA-Z0-9_]+)(?:-y|-objs|-m).*" + re.escape(obj_filename))
 
             lines = content.split("\n")
             in_config_block = None
@@ -779,9 +730,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
                     continue
 
                 # Track config blocks (ifdef CONFIG_XXX)
-                if line.startswith("ifdef CONFIG_") or line.startswith(
-                    "ifeq ($(CONFIG_"
-                ):
+                if line.startswith("ifdef CONFIG_") or line.startswith("ifeq ($(CONFIG_"):
                     config_match = re.search(r"(CONFIG_[A-Z0-9_]+)", line)
                     if config_match:
                         in_config_block = config_match.group(1)
@@ -792,9 +741,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
                 for pattern in direct_patterns:
                     matches = pattern.search(line)
                     if matches:
-                        if len(matches.groups()) > 0 and matches.group(1).startswith(
-                            "CONFIG_"
-                        ):
+                        if len(matches.groups()) > 0 and matches.group(1).startswith("CONFIG_"):
                             configs.add(matches.group(1))
                         elif (
                             in_config_block
@@ -821,9 +768,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
                 # e.g., obj-$(CONFIG_XXX) += module_name
                 for var_name in driver_vars:
                     var_pattern = re.compile(
-                        r"obj-\$\((CONFIG_[A-Z0-9_]+)\)\s*\+=\s*"
-                        + re.escape(var_name)
-                        + r"\b"
+                        r"obj-\$\((CONFIG_[A-Z0-9_]+)\)\s*\+=\s*" + re.escape(var_name) + r"\b"
                     )
                     var_match = var_pattern.search(line)
                     if var_match:
@@ -853,10 +798,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
 
                         # If the driver name appears in the config block description, it's likely related
                         # Be careful with very generic names like "usb" that might cause false positives
-                        if (
-                            len(source_base) > 3
-                            and source_base.lower() in config_block.lower()
-                        ):
+                        if len(source_base) > 3 and source_base.lower() in config_block.lower():
                             configs.add(f"CONFIG_{config_name}")
 
             # If still no configs, try a more aggressive fallback using the driver subsystem
@@ -876,12 +818,12 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
                 # For example: drivers/gpu/drm/i915/i915_drv.c -> CONFIG_DRM_I915
                 try:
                     path_parts = makefile_path.split(os.sep)
-                    drm_index = path_parts.index('drm')
+                    drm_index = path_parts.index("drm")
                     # The next part after 'drm' is the driver subdirectory (e.g., 'xe', 'i915')
                     if drm_index + 1 < len(path_parts):
                         driver_subdir = path_parts[drm_index + 1]
                         # Only use directory name if it's not the Makefile itself
-                        if driver_subdir and driver_subdir != 'Makefile':
+                        if driver_subdir and driver_subdir != "Makefile":
                             configs.add(f"CONFIG_DRM_{driver_subdir.upper()}")
                 except (ValueError, IndexError):
                     # Fallback to base_name if path parsing fails
@@ -895,14 +837,10 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
 
         except Exception as e:
             if self.verbose:
-                print(
-                    f"Error extracting configs from {makefile_path} for {source_filename}: {e}"
-                )
+                print(f"Error extracting configs from {makefile_path} for {source_filename}: {e}")
             return set()
 
-    def extract_configs_by_folder_name(
-        self, makefile_path: str, folder_path: str
-    ) -> Set[str]:
+    def extract_configs_by_folder_name(self, makefile_path: str, folder_path: str) -> Set[str]:
         """
         Extract CONFIG options based on folder name patterns in Makefile.
 
@@ -929,26 +867,16 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
             folder_patterns = [
                 # obj-$(CONFIG_XXX) += folder_name/
                 re.compile(
-                    r"obj-\$\((CONFIG_[A-Z0-9_]+)\)\s*\+=\s*"
-                    + re.escape(folder_name)
-                    + r"/"
+                    r"obj-\$\((CONFIG_[A-Z0-9_]+)\)\s*\+=\s*" + re.escape(folder_name) + r"/"
                 ),
                 # obj-$(CONFIG_XXX) += folder_name
                 re.compile(
-                    r"obj-\$\((CONFIG_[A-Z0-9_]+)\)\s*\+=\s*"
-                    + re.escape(folder_name)
-                    + r"\s*$"
+                    r"obj-\$\((CONFIG_[A-Z0-9_]+)\)\s*\+=\s*" + re.escape(folder_name) + r"\s*$"
                 ),
                 # subdirs-$(CONFIG_XXX) += folder_name
-                re.compile(
-                    r"subdirs-\$\((CONFIG_[A-Z0-9_]+)\)\s*\+=\s*"
-                    + re.escape(folder_name)
-                ),
+                re.compile(r"subdirs-\$\((CONFIG_[A-Z0-9_]+)\)\s*\+=\s*" + re.escape(folder_name)),
                 # subdir-$(CONFIG_XXX) += folder_name
-                re.compile(
-                    r"subdir-\$\((CONFIG_[A-Z0-9_]+)\)\s*\+=\s*"
-                    + re.escape(folder_name)
-                ),
+                re.compile(r"subdir-\$\((CONFIG_[A-Z0-9_]+)\)\s*\+=\s*" + re.escape(folder_name)),
             ]
 
             # Also check for patterns that might include the full relative path
@@ -957,9 +885,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
                     folder_patterns.extend(
                         [
                             re.compile(
-                                r"obj-\$\((CONFIG_[A-Z0-9_]+)\)\s*\+=\s*"
-                                + re.escape(part)
-                                + r"/"
+                                r"obj-\$\((CONFIG_[A-Z0-9_]+)\)\s*\+=\s*" + re.escape(part) + r"/"
                             ),
                             re.compile(
                                 r"obj-\$\((CONFIG_[A-Z0-9_]+)\)\s*\+=\s*"
@@ -1127,9 +1053,7 @@ class ConfigurationAnalyzer(VexKernelCheckerBase):
                                 # Add subsystem-specific prefixes
                                 if subsystem_path.startswith("drivers/"):
                                     subsystem = subsystem_path.split("/")[-1].upper()
-                                    potential_config = (
-                                        f"CONFIG_{subsystem}_{config_name}"
-                                    )
+                                    potential_config = f"CONFIG_{subsystem}_{config_name}"
                                     configs.add(potential_config)
                                 else:
                                     potential_config = f"CONFIG_{config_name}"

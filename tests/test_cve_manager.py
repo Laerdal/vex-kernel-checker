@@ -24,9 +24,7 @@ class TestCVEDataManager(unittest.TestCase):
         self.manager = CVEDataManager(verbose=False)
 
         # Initialize manager with API key
-        self.manager_with_key = CVEDataManager(
-            verbose=False, api_key="test-api-key-12345"
-        )
+        self.manager_with_key = CVEDataManager(verbose=False, api_key="test-api-key-12345")
 
     def test_initialization_without_api_key(self):
         """Test initialization without API key."""
@@ -44,9 +42,7 @@ class TestCVEDataManager(unittest.TestCase):
     def test_is_kernel_related_cve_positive_cases(self):
         """Test kernel-related CVE detection - positive cases."""
         kernel_cve_infos = [
-            CVEInfo(
-                cve_id="CVE-1", description="Linux kernel vulnerability in the driver"
-            ),
+            CVEInfo(cve_id="CVE-1", description="Linux kernel vulnerability in the driver"),
             CVEInfo(
                 cve_id="CVE-2",
                 description="Issue in kernel module affecting network stack",
@@ -99,9 +95,7 @@ class TestCVEDataManager(unittest.TestCase):
         patch_url = self.manager.extract_patch_url(cve_info)
 
         # Should return the first GitHub commit URL found
-        self.assertEqual(
-            patch_url, "https://github.com/torvalds/linux/commit/abc123def456"
-        )
+        self.assertEqual(patch_url, "https://github.com/torvalds/linux/commit/abc123def456")
 
     def test_extract_patch_url_no_urls(self):
         """Test extracting patch URLs when none exist."""
@@ -149,9 +143,7 @@ class TestCVEDataManager(unittest.TestCase):
                 {
                     "cve": {
                         "id": "CVE-2023-12345",
-                        "descriptions": [
-                            {"lang": "en", "value": "Linux kernel vulnerability"}
-                        ],
+                        "descriptions": [{"lang": "en", "value": "Linux kernel vulnerability"}],
                         "published": "2023-01-01T00:00:00.000",
                         "lastModified": "2023-01-02T00:00:00.000",
                         "metrics": {
@@ -179,9 +171,7 @@ class TestCVEDataManager(unittest.TestCase):
         # Mock API error response
         mock_response = Mock()
         mock_response.status_code = 404
-        mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(
-            "404 Not Found"
-        )
+        mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError("404 Not Found")
         mock_get.return_value = mock_response
 
         cve_info = self.manager.fetch_cve_details("CVE-NONEXISTENT")

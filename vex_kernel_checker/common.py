@@ -234,9 +234,7 @@ _interrupt_requested = threading.Event()
 
 def signal_handler(signum, frame):
     """Handle interrupt signals gracefully."""
-    print(
-        f"\n🛑 Interrupt signal received (signal {signum}). Gracefully shutting down..."
-    )
+    print(f"\n🛑 Interrupt signal received (signal {signum}). Gracefully shutting down...")
     _interrupt_requested.set()
 
 

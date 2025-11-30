@@ -91,7 +91,7 @@ class VexKernelChecker(VexKernelCheckerBase):
             performance_tracker=self.perf_tracker,
             check_patches=check_patches,
             analyze_all_cves=analyze_all_cves,
-            ai_assistant=kwargs.get('ai_assistant'),
+            ai_assistant=kwargs.get("ai_assistant"),
             **kwargs,
         )
 
@@ -150,9 +150,7 @@ class VexKernelChecker(VexKernelCheckerBase):
 
             # Check for proper CVE ID format
             if "id" in vuln and not vuln["id"].startswith("CVE-"):
-                issues.append(
-                    f"Vulnerability {i} has invalid CVE ID format: {vuln['id']}"
-                )
+                issues.append(f"Vulnerability {i} has invalid CVE ID format: {vuln['id']}")
 
         return issues
 
@@ -242,9 +240,7 @@ class VexKernelChecker(VexKernelCheckerBase):
                         flush=True,
                     )
             elif self.verbose:
-                print(
-                    f"\n📋 Processing {cve_id_current} ({i+1}/{len(vulns_to_process)})..."
-                )
+                print(f"\n📋 Processing {cve_id_current} ({i+1}/{len(vulns_to_process)})...")
 
             try:
                 # Analyze this vulnerability
@@ -256,9 +252,7 @@ class VexKernelChecker(VexKernelCheckerBase):
                 if analysis_result is not None:
                     # Update vulnerability with analysis
                     vuln_index = None
-                    for idx, orig_vuln in enumerate(
-                        updated_vex_data["vulnerabilities"]
-                    ):
+                    for idx, orig_vuln in enumerate(updated_vex_data["vulnerabilities"]):
                         if orig_vuln.get("id") == cve_id_current:
                             vuln_index = idx
                             break
@@ -279,24 +273,20 @@ class VexKernelChecker(VexKernelCheckerBase):
                     # (i.e., has kernel-specific justifications)
                     if reanalyse:
                         vuln_index = None
-                        for idx, orig_vuln in enumerate(
-                            updated_vex_data["vulnerabilities"]
-                        ):
+                        for idx, orig_vuln in enumerate(updated_vex_data["vulnerabilities"]):
                             if orig_vuln.get("id") == cve_id_current:
                                 vuln_index = idx
                                 break
 
                         if vuln_index is not None:
-                            existing_analysis = updated_vex_data["vulnerabilities"][
-                                vuln_index
-                            ].get("analysis")
+                            existing_analysis = updated_vex_data["vulnerabilities"][vuln_index].get(
+                                "analysis"
+                            )
                             if existing_analysis:
                                 # Check if this was a kernel-specific analysis
                                 # by looking for kernel-related justifications
                                 detail = existing_analysis.get("detail", "")
-                                justification = existing_analysis.get(
-                                    "justification", ""
-                                )
+                                justification = existing_analysis.get("justification", "")
                                 is_kernel_analysis = any(
                                     keyword in detail.lower()
                                     for keyword in [
@@ -317,17 +307,11 @@ class VexKernelChecker(VexKernelCheckerBase):
                                 ]
 
                                 if is_kernel_analysis:
-                                    del updated_vex_data["vulnerabilities"][
-                                        vuln_index
-                                    ]["analysis"]
+                                    del updated_vex_data["vulnerabilities"][vuln_index]["analysis"]
                                     if self.verbose:
-                                        print(
-                                            f"    Removed kernel analysis from {cve_id_current}"
-                                        )
+                                        print(f"    Removed kernel analysis from {cve_id_current}")
                                 elif self.verbose:
-                                    print(
-                                        f"    Preserved non-kernel analysis for {cve_id_current}"
-                                    )
+                                    print(f"    Preserved non-kernel analysis for {cve_id_current}")
 
             except Exception as e:
                 if self.verbose:

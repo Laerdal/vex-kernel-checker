@@ -319,9 +319,7 @@ def main():
         default="benchmark_results.json",
         help="Output file for benchmark results (default: benchmark_results.json)",
     )
-    parser.add_argument(
-        "--no-save", action="store_true", help="Don't save results to file"
-    )
+    parser.add_argument("--no-save", action="store_true", help="Don't save results to file")
 
     args = parser.parse_args()
 

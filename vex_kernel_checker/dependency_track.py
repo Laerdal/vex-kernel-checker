@@ -67,7 +67,9 @@ class DependencyTrackClient:
             Extracted UUID or None
         """
         # Pattern for UUID (standard format)
-        uuid_pattern = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+        uuid_pattern = (
+            r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+        )
 
         # Try to find UUID in URL path
         match = re.search(uuid_pattern, url)
@@ -143,17 +145,13 @@ class DependencyTrackClient:
             ) from e
 
         if response.status_code == 401:
-            raise PermissionError(
-                "Authentication failed. Check your Dependency-Track API key."
-            )
+            raise PermissionError("Authentication failed. Check your Dependency-Track API key.")
         elif response.status_code == 403:
             raise PermissionError(
                 "Access denied. Your API key may not have permission to access this project."
             )
         elif response.status_code == 404:
-            raise ValueError(
-                f"Project not found. Check the project UUID: {self.project_uuid}"
-            )
+            raise ValueError(f"Project not found. Check the project UUID: {self.project_uuid}")
 
         response.raise_for_status()
         vex_data = response.json()
@@ -268,9 +266,7 @@ class DependencyTrackClient:
                 print(f"   Warning: Finding endpoint returned {response.status_code}")
                 if response.text:
                     print(f"   Response: {response.text[:500]}")
-            self.logger.warning(
-                f"Failed to fetch findings: {response.status_code}"
-            )
+            self.logger.warning(f"Failed to fetch findings: {response.status_code}")
             return []
 
         # Get total count from header
@@ -304,7 +300,9 @@ class DependencyTrackClient:
                     all_findings.extend(suppressed_findings)
                 else:
                     if self.verbose:
-                        print(f"   Warning: Suppressed findings endpoint returned {response.status_code}")
+                        print(
+                            f"   Warning: Suppressed findings endpoint returned {response.status_code}"
+                        )
             except requests.exceptions.RequestException as e:
                 if self.verbose:
                     print(f"   Warning: Could not fetch suppressed findings: {e}")
@@ -316,7 +314,9 @@ class DependencyTrackClient:
                 sample = all_findings[0]
                 vuln = sample.get("vulnerability", {})
                 comp = sample.get("component", {})
-                print(f"   Sample finding - CVE: {vuln.get('vulnId')}, Component: {comp.get('name')}")
+                print(
+                    f"   Sample finding - CVE: {vuln.get('vulnId')}, Component: {comp.get('name')}"
+                )
 
         return all_findings
 
@@ -355,7 +355,9 @@ class DependencyTrackClient:
             # Add component to affected list
             if component:
                 comp_ref = component.get("purl") or component.get("uuid", "")
-                if comp_ref and comp_ref not in [c.get("ref") for c in vuln_map[vuln_id]["components"]]:
+                if comp_ref and comp_ref not in [
+                    c.get("ref") for c in vuln_map[vuln_id]["components"]
+                ]:
                     vuln_map[vuln_id]["components"].append({"ref": comp_ref})
 
             # Prefer non-empty analysis
@@ -432,7 +434,9 @@ class DependencyTrackClient:
                 refs = []
                 for ref in vuln.get("references", []):
                     if isinstance(ref, dict):
-                        refs.append({"id": ref.get("url", ""), "source": {"url": ref.get("url", "")}})
+                        refs.append(
+                            {"id": ref.get("url", ""), "source": {"url": ref.get("url", "")}}
+                        )
                     elif isinstance(ref, str):
                         refs.append({"id": ref, "source": {"url": ref}})
                 if refs:
@@ -557,30 +561,21 @@ class DependencyTrackClient:
             )
         except requests.exceptions.ConnectionError as e:
             raise ConnectionError(
-                f"Cannot connect to Dependency-Track for upload. "
-                f"URL: {upload_url}"
+                f"Cannot connect to Dependency-Track for upload. " f"URL: {upload_url}"
             ) from e
 
         if response.status_code == 401:
-            raise PermissionError(
-                "Authentication failed. Check your Dependency-Track API key."
-            )
+            raise PermissionError("Authentication failed. Check your Dependency-Track API key.")
         elif response.status_code == 403:
-            raise PermissionError(
-                "Access denied. Your API key may not have BOM_UPLOAD permission."
-            )
+            raise PermissionError("Access denied. Your API key may not have BOM_UPLOAD permission.")
         elif response.status_code == 404:
-            raise ValueError(
-                f"Project not found. Check the project UUID: {uuid}"
-            )
+            raise ValueError(f"Project not found. Check the project UUID: {uuid}")
         elif response.status_code == 400:
             # Get error details from response
             error_detail = response.text[:500] if response.text else "No details"
             if self.verbose:
                 print(f"   Upload error response: {error_detail}")
-            raise ValueError(
-                f"Bad request - VEX format may be invalid. Details: {error_detail}"
-            )
+            raise ValueError(f"Bad request - VEX format may be invalid. Details: {error_detail}")
 
         response.raise_for_status()
 
@@ -669,9 +664,7 @@ class DependencyTrackClient:
             print(f"   Response status: {response.status_code}, total matching: {total_count}")
 
         if response.status_code == 401:
-            raise PermissionError(
-                "Authentication failed. Check your Dependency-Track API key."
-            )
+            raise PermissionError("Authentication failed. Check your Dependency-Track API key.")
         elif response.status_code == 403:
             raise PermissionError(
                 "Access denied. Your API key may not have permission to list projects."
@@ -768,14 +761,21 @@ class DependencyTrackClient:
                 search_details += f", parent_uuid='{parent_uuid}'"
             if parent_name:
                 search_details += f", parent_name='{parent_name}'"
-            print(f"🔍 Looking up project: {search_details}" + (" (latest version)" if latest and not version else ""))
+            print(
+                f"🔍 Looking up project: {search_details}"
+                + (" (latest version)" if latest and not version else "")
+            )
 
         projects = self.list_projects(name_filter=name)
 
         if self.verbose:
             print(f"   Found {len(projects)} projects containing '{name}' in name")
             for p in projects[:10]:  # Show first 10
-                parent_info = f" (parent: {p.get('parent', {}).get('uuid', 'none')})" if p.get('parent') else ""
+                parent_info = (
+                    f" (parent: {p.get('parent', {}).get('uuid', 'none')})"
+                    if p.get("parent")
+                    else ""
+                )
                 print(f"     - {p.get('name')} v{p.get('version', 'N/A')}{parent_info}")
             if len(projects) > 10:
                 print(f"     ... and {len(projects) - 10} more")
@@ -798,11 +798,15 @@ class DependencyTrackClient:
                     continue
                 if parent_uuid and parent.get("uuid") != parent_uuid:
                     if self.verbose:
-                        print(f"   Skipping '{project_name}' - parent UUID mismatch: {parent.get('uuid')} != {parent_uuid}")
+                        print(
+                            f"   Skipping '{project_name}' - parent UUID mismatch: {parent.get('uuid')} != {parent_uuid}"
+                        )
                     continue
                 if parent_name and parent.get("name") != parent_name:
                     if self.verbose:
-                        print(f"   Skipping '{project_name}' - parent name mismatch: {parent.get('name')} != {parent_name}")
+                        print(
+                            f"   Skipping '{project_name}' - parent name mismatch: {parent.get('name')} != {parent_name}"
+                        )
                     continue
 
             matching_projects.append(project)
@@ -813,10 +817,7 @@ class DependencyTrackClient:
         # If latest=True and no version specified, sort by lastBomImport (most recent first)
         if latest and not version:
             # Sort by lastBomImport timestamp (descending), fallback to name
-            matching_projects.sort(
-                key=lambda p: p.get("lastBomImport") or "",
-                reverse=True
-            )
+            matching_projects.sort(key=lambda p: p.get("lastBomImport") or "", reverse=True)
             if self.verbose and len(matching_projects) > 1:
                 latest_version = matching_projects[0].get("version", "unknown")
                 print(f"   Found {len(matching_projects)} versions, using latest: {latest_version}")
@@ -931,7 +932,7 @@ def download_from_dependency_track(
     if url:
         parsed = urlparse(url)
         # Extract base URL up to /api if present
-        path_parts = parsed.path.split('/api/')
+        path_parts = parsed.path.split("/api/")
         if len(path_parts) > 1:
             api_url = f"{parsed.scheme}://{parsed.netloc}/api"
         else:

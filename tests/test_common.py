@@ -23,9 +23,7 @@ class TestEnums(unittest.TestCase):
     def test_vulnerability_state_values(self):
         """Test VulnerabilityState enum values match CycloneDX v1.6."""
         self.assertEqual(VulnerabilityState.RESOLVED.value, "resolved")
-        self.assertEqual(
-            VulnerabilityState.RESOLVED_WITH_PEDIGREE.value, "resolved_with_pedigree"
-        )
+        self.assertEqual(VulnerabilityState.RESOLVED_WITH_PEDIGREE.value, "resolved_with_pedigree")
         self.assertEqual(VulnerabilityState.EXPLOITABLE.value, "exploitable")
         self.assertEqual(VulnerabilityState.IN_TRIAGE.value, "in_triage")
         self.assertEqual(VulnerabilityState.FALSE_POSITIVE.value, "false_positive")
@@ -35,9 +33,7 @@ class TestEnums(unittest.TestCase):
         """Test Justification enum values."""
         self.assertEqual(Justification.CODE_NOT_PRESENT.value, "code_not_present")
         self.assertEqual(Justification.CODE_NOT_REACHABLE.value, "code_not_reachable")
-        self.assertEqual(
-            Justification.REQUIRES_CONFIGURATION.value, "requires_configuration"
-        )
+        self.assertEqual(Justification.REQUIRES_CONFIGURATION.value, "requires_configuration")
         self.assertEqual(Justification.REQUIRES_DEPENDENCY.value, "requires_dependency")
 
     def test_response_values(self):
@@ -101,9 +97,7 @@ class TestVulnerabilityAnalysis(unittest.TestCase):
         expected = {
             "state": "exploitable",
             "justification": "requires_configuration",
-            "response": [
-                "can_not_fix"
-            ],  # Per CycloneDX 1.5 spec, response must be array
+            "response": ["can_not_fix"],  # Per CycloneDX 1.5 spec, response must be array
             "detail": "All required configs enabled",
             "lastUpdated": "2025-01-01T12:00:00Z",
         }

@@ -55,9 +55,7 @@ obj-$(CONFIG_BLUETOOTH) += bt_driver.o
         with open(makefile_path, "w") as f:
             f.write(makefile_content)
 
-        configs = self.analyzer.extract_config_options_from_makefile(
-            makefile_path, "net_driver.o"
-        )
+        configs = self.analyzer.extract_config_options_from_makefile(makefile_path, "net_driver.o")
 
         # Should find relevant config options
         self.assertIsInstance(configs, set)
@@ -108,9 +106,7 @@ obj-$(CONFIG_USB_SUPPORT) += usb_driver.o
         with open(source_path, "w") as f:
             f.write("// Example driver")
 
-        configs = self.analyzer.find_makefiles_config_options(
-            source_path, self.kernel_source_dir
-        )
+        configs = self.analyzer.find_makefiles_config_options(source_path, self.kernel_source_dir)
 
         self.assertIsInstance(configs, set)
 
@@ -151,9 +147,7 @@ static void feature_b_handler(void) {
         with open(source_path, "w") as f:
             f.write(source_content)
 
-        configs = self.analyzer._advanced_config_search(
-            source_path, self.kernel_source_dir
-        )
+        configs = self.analyzer._advanced_config_search(source_path, self.kernel_source_dir)
 
         self.assertIsInstance(configs, set)
         # Should find configs referenced in the source file
@@ -206,9 +200,7 @@ config NET_SUPPORT
         with open(makefile_path, "w") as f:
             f.write("")
 
-        configs = self.analyzer.extract_config_options_from_makefile(
-            makefile_path, "test.o"
-        )
+        configs = self.analyzer.extract_config_options_from_makefile(makefile_path, "test.o")
 
         self.assertIsInstance(configs, set)
         self.assertEqual(len(configs), 0)
@@ -228,9 +220,7 @@ another invalid line
             f.write(makefile_content)
 
         # Should not crash on malformed content
-        configs = self.analyzer.extract_config_options_from_makefile(
-            makefile_path, "valid.o"
-        )
+        configs = self.analyzer.extract_config_options_from_makefile(makefile_path, "valid.o")
 
         self.assertIsInstance(configs, set)
 

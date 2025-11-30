@@ -120,9 +120,7 @@ def load_config_file(config_path: str) -> Dict:
             parser.read(config_path)
 
             # Use the 'vex-kernel-checker' section if it exists, otherwise use DEFAULT
-            section_name = (
-                "vex-kernel-checker" if "vex-kernel-checker" in parser else "DEFAULT"
-            )
+            section_name = "vex-kernel-checker" if "vex-kernel-checker" in parser else "DEFAULT"
             logger.debug(f"Using configuration section: {section_name}")
 
             for key, value in parser[section_name].items():
@@ -150,7 +148,12 @@ def load_config_file(config_path: str) -> Dict:
                         # Input files: relative to config file location
                         # Output files: relative to current working directory
                         if not os.path.isabs(expanded_value):
-                            if cli_key in ["vex-file", "kernel-config", "kernel-source", "edge-driver"]:
+                            if cli_key in [
+                                "vex-file",
+                                "kernel-config",
+                                "kernel-source",
+                                "edge-driver",
+                            ]:
                                 # Input files are relative to config file location
                                 config_dir = os.path.dirname(os.path.abspath(config_path))
                                 expanded_value = os.path.join(config_dir, expanded_value)
@@ -208,17 +211,18 @@ def merge_config_with_args(
     parser_defaults = {}
     if parser:
         for action in parser._actions:
-            if action.dest != 'help':
+            if action.dest != "help":
                 parser_defaults[action.dest] = action.default
 
     # Get command-line arguments (those explicitly provided by user)
     # We'll assume that if a value matches the parser default and wasn't in config,
     # it wasn't explicitly provided by the user
     import sys
+
     cli_args = set()
     for i, arg in enumerate(sys.argv[1:]):
-        if arg.startswith('--'):
-            arg_name = arg.lstrip('--').replace('-', '_')
+        if arg.startswith("--"):
+            arg_name = arg.lstrip("--").replace("-", "_")
             cli_args.add(arg_name)
 
     # Create a copy of args to avoid modifying the original
@@ -332,7 +336,7 @@ def validate_input_files(args) -> bool:
 
     # Check if required arguments are provided
     # VEX file can come from --vex-file OR --dt-url
-    if not args.vex_file and not getattr(args, 'dt_url', None):
+    if not args.vex_file and not getattr(args, "dt_url", None):
         logger.error("--vex-file or --dt-url is required")
         print("Error: --vex-file or --dt-url is required")
         return False
@@ -354,7 +358,7 @@ def validate_input_files(args) -> bool:
     ]
 
     # Only validate VEX file if not downloading from Dependency-Track
-    if args.vex_file and not getattr(args, 'dt_url', None):
+    if args.vex_file and not getattr(args, "dt_url", None):
         validations.insert(0, (args.vex_file, "VEX file"))
 
     for file_path, description in validations:
@@ -366,7 +370,7 @@ def validate_input_files(args) -> bool:
             logger.debug(f"{description} found: {file_path}")
 
     # Additional validation for file types/formats
-    if args.vex_file and not getattr(args, 'dt_url', None):
+    if args.vex_file and not getattr(args, "dt_url", None):
         if not args.vex_file.endswith((".json", ".cdx")):
             logger.warning(f"VEX file should be JSON or CDX format: {args.vex_file}")
             print(f"Warning: VEX file should be JSON or CDX format: {args.vex_file}")
@@ -388,9 +392,7 @@ def print_analysis_overview(
     print(f"   Total vulnerabilities: {total_vulns}")
     print(f"   Kernel configuration: {len(kernel_config)} options")
     print(f'   Architecture: {arch if arch else "Unknown"}')
-    print(
-        f'   Patch checking: {"Enabled" if not disable_patch_checking else "Disabled"}'
-    )
+    print(f'   Patch checking: {"Enabled" if not disable_patch_checking else "Disabled"}')
     print(f'   API key: {"Provided" if api_key else "Not provided (rate limited)"}')
     print()
 
@@ -419,10 +421,7 @@ def print_final_summary(report: Dict) -> None:
 
     # Calculate key metrics
     safe_count = (
-        not_affected_count
-        + resolved_count
-        + resolved_with_pedigree_count
-        + false_positive_count
+        not_affected_count + resolved_count + resolved_with_pedigree_count + false_positive_count
     )
     risk_count = exploitable_count
 
@@ -454,9 +453,7 @@ def print_final_summary(report: Dict) -> None:
         "minimal": "⚪",
         "unknown": "⚫",
     }
-    print(
-        f'   • Overall risk level: {risk_emoji.get(risk_level, "⚫")} {risk_level.upper()}'
-    )
+    print(f'   • Overall risk level: {risk_emoji.get(risk_level, "⚫")} {risk_level.upper()}')
 
     print("\n📊 BREAKDOWN BY STATUS:")
     print(f"   ✅ Not affected: {not_affected_count}")
@@ -468,9 +465,7 @@ def print_final_summary(report: Dict) -> None:
 
     # Show top exploitable CVEs if any
     if exploitable_count > 0:
-        print(
-            f"\n⚠️  WARNING: {exploitable_count} vulnerabilities may affect this kernel"
-        )
+        print(f"\n⚠️  WARNING: {exploitable_count} vulnerabilities may affect this kernel")
         print("   Review analysis details and consider patches or config changes")
 
         vulnerabilities = report.get("vulnerabilities", {})
@@ -530,9 +525,7 @@ def setup_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--kernel-source", help="Path to kernel source directory")
 
     # Optional arguments
-    parser.add_argument(
-        "--output", help="Output file path (default: update VEX file in place)"
-    )
+    parser.add_argument("--output", help="Output file path (default: update VEX file in place)")
     parser.add_argument("--log-file", help="Log file path (default: no logging)")
     parser.add_argument(
         "--reanalyse",
@@ -540,9 +533,7 @@ def setup_argument_parser() -> argparse.ArgumentParser:
         help="Re-analyze all vulnerabilities, including those with existing analysis (default: only analyze CVEs without analysis)",
     )
     parser.add_argument("--cve-id", help="Process only specific CVE ID")
-    parser.add_argument(
-        "--verbose", "-v", action="store_true", help="Enable verbose output"
-    )
+    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose output")
     parser.add_argument(
         "--config-only",
         action="store_true",
@@ -690,9 +681,7 @@ def load_and_validate_data(args, perf_tracker: PerformanceTracker):
     print(f"Loading VEX data from {args.vex_file}...")
     vex_data = VexKernelCheckerBase.load_vex_file(args.vex_file)
     perf_tracker.end_timer("load_vex_data")
-    logger.debug(
-        f"Loaded VEX data with {len(vex_data.get('vulnerabilities', []))} vulnerabilities"
-    )
+    logger.debug(f"Loaded VEX data with {len(vex_data.get('vulnerabilities', []))} vulnerabilities")
 
     # Load kernel config
     logger.info(f"Loading kernel configuration from {args.kernel_config}...")
@@ -734,9 +723,7 @@ def setup_checker(args, arch):
     disable_patch_checking = args.config_only
 
     logger.info("Initializing VEX Kernel Checker...")
-    logger.debug(
-        f"Patch checking: {'disabled' if disable_patch_checking else 'enabled'}"
-    )
+    logger.debug(f"Patch checking: {'disabled' if disable_patch_checking else 'enabled'}")
     logger.debug(f"Architecture: {arch}")
     logger.debug(f"Analyze all CVEs: {args.analyze_all_cves}")
     logger.debug(f"API key provided: {bool(args.api_key)}")
@@ -792,9 +779,7 @@ def setup_checker(args, arch):
             # Also set it on the vulnerability analyzer for triage assistance
             checker.vulnerability_analyzer.ai_assistant = ai_assistant
         else:
-            print(
-                "⚠️  AI Assistant could not be initialized (check API key and dependencies)"
-            )
+            print("⚠️  AI Assistant could not be initialized (check API key and dependencies)")
             logger.warning("AI Assistant initialization failed")
             checker.ai_assistant = None
     else:
@@ -823,9 +808,7 @@ def validate_and_show_vex_data(checker, vex_data):
             logger.warning(f"VEX validation issue: {issue}")
             print(f"  ⚠️  {issue}")
         if len(validation_issues) > 3:
-            logger.warning(
-                f"... and {len(validation_issues) - 3} more validation issues"
-            )
+            logger.warning(f"... and {len(validation_issues) - 3} more validation issues")
             print(f"  ... and {len(validation_issues) - 3} more issues")
         print()
     else:
@@ -843,13 +826,9 @@ def perform_analysis(args, checker, vex_data, kernel_config, arch):
     print("=" * 60)
 
     # Show analysis overview
-    print_analysis_overview(
-        vex_data, kernel_config, arch, args.config_only, args.api_key
-    )
+    print_analysis_overview(vex_data, kernel_config, arch, args.config_only, args.api_key)
 
-    logger.debug(
-        f"Analysis parameters: reanalyse={args.reanalyse}, cve_id={args.cve_id}"
-    )
+    logger.debug(f"Analysis parameters: reanalyse={args.reanalyse}, cve_id={args.cve_id}")
     logger.debug(f"Kernel source path: {args.kernel_source}")
 
     start_time = time.time()
@@ -945,15 +924,13 @@ def generate_markdown_report(report: Dict, output_file: str) -> str:
 """
 
     if total > 0:
-        md_content += (
-            f"| ✅ Not Affected | {not_affected} | {(not_affected/total)*100:.1f}% |\n"
-        )
+        md_content += f"| ✅ Not Affected | {not_affected} | {(not_affected/total)*100:.1f}% |\n"
         md_content += f"| 🔧 Resolved | {resolved} | {(resolved/total)*100:.1f}% |\n"
         md_content += f"| 🔧📋 Resolved with Pedigree | {resolved_with_pedigree} | {(resolved_with_pedigree/total)*100:.1f}% |\n"
+        md_content += f"| ⚠️ Exploitable | {exploitable} | {(exploitable/total)*100:.1f}% |\n"
         md_content += (
-            f"| ⚠️ Exploitable | {exploitable} | {(exploitable/total)*100:.1f}% |\n"
+            f"| ❌ False Positive | {false_positive} | {(false_positive/total)*100:.1f}% |\n"
         )
-        md_content += f"| ❌ False Positive | {false_positive} | {(false_positive/total)*100:.1f}% |\n"
         md_content += f"| 🔍 In Triage | {in_triage} | {(in_triage/total)*100:.1f}% |\n"
         md_content += f"| ❓ Unanalyzed | {unanalyzed} | {(unanalyzed/total)*100:.1f}% |\n"
 
@@ -991,16 +968,16 @@ def generate_markdown_report(report: Dict, output_file: str) -> str:
                 md_content += f"| {cve_id} | {severity} | {desc_short} |\n"
 
             if len(exploitable_list) > 10:
-                md_content += (
-                    f"\n*... and {len(exploitable_list) - 10} more exploitable CVEs*\n"
-                )
+                md_content += f"\n*... and {len(exploitable_list) - 10} more exploitable CVEs*\n"
 
             md_content += "\n"
 
     # In triage section
     if in_triage > 0:
         md_content += "## 🔍 Manual Review Required\n\n"
-        md_content += f"**{in_triage} vulnerabilities** require manual review to determine their impact.\n\n"
+        md_content += (
+            f"**{in_triage} vulnerabilities** require manual review to determine their impact.\n\n"
+        )
 
     # Unanalyzed section
     if unanalyzed > 0:
@@ -1138,27 +1115,28 @@ def main() -> int:
 
     # Handle Dependency-Track download if specified
     dt_client = None
-    dt_project_name = getattr(args, 'dt_project_name', None)
-    dt_project_uuid = getattr(args, 'dt_project_uuid', None)
-    dt_url = getattr(args, 'dt_url', None)
+    dt_project_name = getattr(args, "dt_project_name", None)
+    dt_project_uuid = getattr(args, "dt_project_uuid", None)
+    dt_url = getattr(args, "dt_url", None)
 
     if dt_url or dt_project_uuid or dt_project_name:
         from vex_kernel_checker.dependency_track import DependencyTrackClient
 
         # Get API key from args or environment
-        dt_api_key = getattr(args, 'dt_api_key', None) or os.environ.get('DT_API_KEY')
+        dt_api_key = getattr(args, "dt_api_key", None) or os.environ.get("DT_API_KEY")
         if not dt_api_key:
             logger.error("Dependency-Track API key required (--dt-api-key or DT_API_KEY env var)")
             print("Error: Dependency-Track API key required (--dt-api-key or DT_API_KEY env var)")
             return 1
 
         # Determine API URL
-        dt_api_url = getattr(args, 'dt_api_url', None)
+        dt_api_url = getattr(args, "dt_api_url", None)
         if not dt_api_url and dt_url:
             from urllib.parse import urlparse
+
             parsed = urlparse(dt_url)
             # Extract base URL up to /api if present, otherwise just host
-            path_parts = parsed.path.split('/api/')
+            path_parts = parsed.path.split("/api/")
             if len(path_parts) > 1:
                 dt_api_url = f"{parsed.scheme}://{parsed.netloc}/api"
             else:
@@ -1185,9 +1163,9 @@ def main() -> int:
             try:
                 project = dt_client.find_project(
                     name=dt_project_name,
-                    version=getattr(args, 'dt_project_version', None),
-                    parent_name=getattr(args, 'dt_parent_name', None),
-                    parent_uuid=getattr(args, 'dt_parent_uuid', None),
+                    version=getattr(args, "dt_project_version", None),
+                    parent_name=getattr(args, "dt_parent_name", None),
+                    parent_uuid=getattr(args, "dt_parent_uuid", None),
                 )
 
                 if project:
@@ -1243,7 +1221,7 @@ def main() -> int:
         run_analysis_workflow(args, output_file, perf_tracker)
 
         # Upload results to Dependency-Track if requested
-        if getattr(args, 'dt_upload', False) and dt_client:
+        if getattr(args, "dt_upload", False) and dt_client:
             print("\n" + "=" * 60)
             print("📤 UPLOADING TO DEPENDENCY-TRACK")
             print("=" * 60)
@@ -1255,7 +1233,7 @@ def main() -> int:
 
                 dt_client.upload_vex(
                     analyzed_vex,
-                    url=getattr(args, 'dt_upload_url', None),
+                    url=getattr(args, "dt_upload_url", None),
                 )
                 print("✅ Successfully uploaded results to Dependency-Track")
             except Exception as e:

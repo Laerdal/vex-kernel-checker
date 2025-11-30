@@ -72,9 +72,7 @@ class VexKernelCheckerLogger:
         cls._configured = True
 
         if verbose:
-            package_logger.debug(
-                "Verbose logging enabled for VEX Kernel Checker package"
-            )
+            package_logger.debug("Verbose logging enabled for VEX Kernel Checker package")
 
     @classmethod
     def get_logger(cls, name: str) -> logging.Logger:

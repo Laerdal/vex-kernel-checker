@@ -262,9 +262,7 @@ class VexKernelCheckerBase:
             # Use separators to match Dependency Tracker format: space before and after colon
             # Preserve key order (don't sort)
             # Use ensure_ascii=False to preserve Unicode characters like curly quotes
-            json_str = json.dumps(
-                vex_data, indent=2, separators=(", ", " : "), ensure_ascii=False
-            )
+            json_str = json.dumps(vex_data, indent=2, separators=(", ", " : "), ensure_ascii=False)
             # Remove trailing spaces that appear after commas at end of lines
             json_str = "\n".join(line.rstrip() for line in json_str.split("\n"))
             f.write(json_str)
@@ -294,9 +292,7 @@ class VexKernelCheckerBase:
                 misses = self._cache_misses[cache_type]
                 total = hits + misses
                 hit_rate = (hits / total * 100) if total > 0 else 0
-                print(
-                    f"    {cache_type.capitalize()}: {hit_rate:.1f}% ({hits}/{total})"
-                )
+                print(f"    {cache_type.capitalize()}: {hit_rate:.1f}% ({hits}/{total})")
         else:
             print("  No cache statistics available")
 
@@ -327,12 +323,8 @@ class VexKernelCheckerBase:
         """Compile advanced regex patterns for config detection."""
         return {
             "primary": [
-                re.compile(
-                    r"obj-\$\((CONFIG_[A-Z0-9_]+)\)\s*[+:]?=\s*.*?\.o\b", re.IGNORECASE
-                ),
-                re.compile(
-                    r"([a-zA-Z0-9_-]+)-objs-\$\((CONFIG_[A-Z0-9_]+)\)", re.IGNORECASE
-                ),
+                re.compile(r"obj-\$\((CONFIG_[A-Z0-9_]+)\)\s*[+:]?=\s*.*?\.o\b", re.IGNORECASE),
+                re.compile(r"([a-zA-Z0-9_-]+)-objs-\$\((CONFIG_[A-Z0-9_]+)\)", re.IGNORECASE),
                 re.compile(r"^(CONFIG_[A-Z0-9_]+)\s*[=:]", re.MULTILINE),
             ],
             "conditional": [
@@ -341,9 +333,7 @@ class VexKernelCheckerBase:
             ],
             "source_hints": [
                 re.compile(r"#ifn?def\s+(CONFIG_[A-Z0-9_]+)", re.IGNORECASE),
-                re.compile(
-                    r"IS_ENABLED\s*\(\s*(CONFIG_[A-Z0-9_]+)\s*\)", re.IGNORECASE
-                ),
+                re.compile(r"IS_ENABLED\s*\(\s*(CONFIG_[A-Z0-9_]+)\s*\)", re.IGNORECASE),
             ],
         }
 
@@ -452,10 +442,7 @@ class VexKernelCheckerBase:
             elif config_option.startswith("CONFIG_ARM_"):
                 return "arm", "CONFIG_ARM"
             # x86 specific configs
-            elif (
-                config_option.startswith("CONFIG_X86_")
-                and config_option != "CONFIG_X86_64"
-            ):
+            elif config_option.startswith("CONFIG_X86_") and config_option != "CONFIG_X86_64":
                 return "x86", "CONFIG_X86"
             # MIPS specific configs
             elif config_option.startswith("CONFIG_MIPS_"):

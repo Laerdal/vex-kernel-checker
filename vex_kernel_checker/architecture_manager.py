@@ -134,9 +134,7 @@ class ArchitectureManager(VexKernelCheckerBase):
 
         # Method 1: Try uname -m
         try:
-            result = subprocess.run(
-                ["uname", "-m"], capture_output=True, text=True, timeout=5
-            )
+            result = subprocess.run(["uname", "-m"], capture_output=True, text=True, timeout=5)
             if result.returncode == 0:
                 arch = result.stdout.strip().lower()
                 normalized = self._normalize_architecture(arch)
@@ -157,9 +155,7 @@ class ArchitectureManager(VexKernelCheckerBase):
             normalized = self._normalize_architecture(arch)
             if normalized:
                 if self.verbose:
-                    print(
-                        f"   ✅ Detected via platform.machine(): {arch} -> {normalized}"
-                    )
+                    print(f"   ✅ Detected via platform.machine(): {arch} -> {normalized}")
                 return normalized
         except Exception:
             pass
@@ -287,10 +283,7 @@ class ArchitectureManager(VexKernelCheckerBase):
             # Check for architecture-specific configs
             for arch, configs in self._arch_config_mapping.items():
                 for config in configs:
-                    if (
-                        f"{config}=y" in config_content
-                        or f"{config}=m" in config_content
-                    ):
+                    if f"{config}=y" in config_content or f"{config}=m" in config_content:
                         return arch
 
         except Exception:
@@ -368,9 +361,7 @@ class ArchitectureManager(VexKernelCheckerBase):
         return list(self._arch_config_mapping.keys())
 
     @timed_method
-    def validate_architecture_config(
-        self, arch: str, kernel_config: List[str]
-    ) -> Dict[str, Any]:
+    def validate_architecture_config(self, arch: str, kernel_config: List[str]) -> Dict[str, Any]:
         """
         Validate that kernel configuration matches claimed architecture.
 

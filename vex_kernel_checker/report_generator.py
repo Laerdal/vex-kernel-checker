@@ -177,14 +177,10 @@ class ReportGenerator(VexKernelCheckerBase):
         in_triage = report["in_triage"]
 
         if exploitable > 0:
-            recommendations.append(
-                f"Review {exploitable} exploitable vulnerabilities immediately"
-            )
+            recommendations.append(f"Review {exploitable} exploitable vulnerabilities immediately")
 
         if in_triage > total * 0.2:  # More than 20% in triage
-            recommendations.append(
-                "Consider enabling patch checking for better analysis coverage"
-            )
+            recommendations.append("Consider enabling patch checking for better analysis coverage")
 
         if report["analysis_coverage"] < 80:
             recommendations.append(
@@ -193,9 +189,7 @@ class ReportGenerator(VexKernelCheckerBase):
 
         # Severity-based recommendations
         severity_breakdown = report.get("by_severity", {})
-        critical_high = severity_breakdown.get("CRITICAL", 0) + severity_breakdown.get(
-            "HIGH", 0
-        )
+        critical_high = severity_breakdown.get("CRITICAL", 0) + severity_breakdown.get("HIGH", 0)
 
         if critical_high > 0:
             recommendations.append(
@@ -251,9 +245,7 @@ class ReportGenerator(VexKernelCheckerBase):
             "minimal": "⚪",
             "unknown": black_circle,
         }
-        print(
-            f"🎯 Risk level: {risk_emoji.get(risk_level, black_circle)} {risk_level.upper()}"
-        )
+        print(f"🎯 Risk level: {risk_emoji.get(risk_level, black_circle)} {risk_level.upper()}")
 
         # Show severity breakdown if available
         severity_breakdown = report.get("by_severity", {})
@@ -413,9 +405,7 @@ class ReportGenerator(VexKernelCheckerBase):
 
         for operation, timing_data in timings.items():
             if isinstance(timing_data, dict) and "duration" in timing_data:
-                if (
-                    timing_data["duration"] > 5.0
-                ):  # Operations taking more than 5 seconds
+                if timing_data["duration"] > 5.0:  # Operations taking more than 5 seconds
                     slow_operations.append((operation, timing_data["duration"]))
 
         if slow_operations:
@@ -430,9 +420,7 @@ class ReportGenerator(VexKernelCheckerBase):
         return recommendations
 
     @timed_method
-    def export_report(
-        self, report: Dict, output_file: str, format: str = "json"
-    ) -> bool:
+    def export_report(self, report: Dict, output_file: str, format: str = "json") -> bool:
         """
         Export report to file in specified format.
 
@@ -454,9 +442,7 @@ class ReportGenerator(VexKernelCheckerBase):
                     import yaml
 
                     with open(output_file, "w") as f:
-                        yaml.safe_dump(
-                            report, f, default_flow_style=False, sort_keys=True
-                        )
+                        yaml.safe_dump(report, f, default_flow_style=False, sort_keys=True)
                 except ImportError:
                     if self.verbose:
                         print("YAML export requires PyYAML package")

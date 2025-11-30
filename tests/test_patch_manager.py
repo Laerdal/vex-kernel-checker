@@ -36,7 +36,9 @@ class TestPatchManager(unittest.TestCase):
 
     def test_extract_commit_id_from_kernel_org(self):
         """Test extracting commit ID from kernel.org URLs."""
-        url = "https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=abcd1234"
+        url = (
+            "https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=abcd1234"
+        )
         commit_id = self.patch_manager._extract_commit_id_from_url(url)
         self.assertEqual(commit_id, "abcd1234")
 
@@ -48,9 +50,7 @@ class TestPatchManager(unittest.TestCase):
 
     def test_extract_commit_id_invalid_url(self):
         """Test handling of invalid URLs."""
-        commit_id = self.patch_manager._extract_commit_id_from_url(
-            "https://example.com/invalid"
-        )
+        commit_id = self.patch_manager._extract_commit_id_from_url("https://example.com/invalid")
         self.assertIsNone(commit_id)
 
     def test_extract_patch_url_from_cve_patch_urls(self):
@@ -160,9 +160,7 @@ index 123..456 100644
        PCI/PCIe devices.
 """
 
-        config_options = self.patch_manager.extract_config_options_from_patch(
-            patch_content
-        )
+        config_options = self.patch_manager.extract_config_options_from_patch(patch_content)
 
         self.assertIsInstance(config_options, set)
         # Config extraction should find references to CONFIG options
@@ -172,7 +170,9 @@ index 123..456 100644
 
     def test_get_alternative_patch_urls(self):
         """Test generation of alternative patch URLs."""
-        original_url = "https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=abcd1234"
+        original_url = (
+            "https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=abcd1234"
+        )
 
         alternative_urls = self.patch_manager.get_alternative_patch_urls(original_url)
 
@@ -226,9 +226,7 @@ index 123..456 100644
     @patch("vex_kernel_checker.patch_manager.SELENIUM_AVAILABLE", False)
     def test_fetch_patch_with_selenium_unavailable(self):
         """Test Selenium patch fetching when Selenium is unavailable."""
-        result = self.patch_manager.fetch_patch_with_selenium(
-            "https://example.com/patch"
-        )
+        result = self.patch_manager.fetch_patch_with_selenium("https://example.com/patch")
         self.assertIsNone(result)
 
     def test_replace_multiple_substrings(self):

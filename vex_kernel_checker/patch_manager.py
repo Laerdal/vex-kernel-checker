@@ -67,9 +67,7 @@ class PatchManager(VexKernelCheckerBase):
 
         if not self.edge_driver_path:
             if self.verbose:
-                print(
-                    "Edge driver path not configured, skipping WebDriver-based patch fetching"
-                )
+                print("Edge driver path not configured, skipping WebDriver-based patch fetching")
             return None
 
         # Try multiple alternative URLs
@@ -127,9 +125,7 @@ class PatchManager(VexKernelCheckerBase):
                     content = element.text
 
                     if content and (
-                        "diff --git" in content
-                        or "index " in content
-                        or "@@" in content
+                        "diff --git" in content or "index " in content or "@@" in content
                     ):
                         if self.verbose:
                             print(
@@ -200,13 +196,9 @@ class PatchManager(VexKernelCheckerBase):
                 response.raise_for_status()
 
                 content = response.text
-                if content and (
-                    "diff --git" in content or "index " in content or "@@" in content
-                ):
+                if content and ("diff --git" in content or "index " in content or "@@" in content):
                     if self.verbose:
-                        print(
-                            f"Successfully fetched patch from alternative URL: {alt_url}"
-                        )
+                        print(f"Successfully fetched patch from alternative URL: {alt_url}")
                     return content
 
             except Exception as e:
@@ -225,9 +217,7 @@ class PatchManager(VexKernelCheckerBase):
             response.raise_for_status()
 
             content = response.text
-            if content and (
-                "diff --git" in content or "index " in content or "@@" in content
-            ):
+            if content and ("diff --git" in content or "index " in content or "@@" in content):
                 if self.verbose:
                     print("Successfully fetched patch via direct HTTP")
                 return content
@@ -248,17 +238,13 @@ class PatchManager(VexKernelCheckerBase):
         """Fetch patch content from GitHub API."""
         try:
             # Try direct GitHub patch URL first (this includes proper headers)
-            github_patch_url = (
-                f"https://github.com/torvalds/linux/commit/{commit_id}.patch"
-            )
+            github_patch_url = f"https://github.com/torvalds/linux/commit/{commit_id}.patch"
 
             response = requests.get(github_patch_url, timeout=30)
             if response.status_code == 200:
                 content = response.text
                 # Validate that it looks like a patch
-                if content and (
-                    "diff --git" in content or "---" in content or "+++" in content
-                ):
+                if content and ("diff --git" in content or "---" in content or "+++" in content):
                     return content
 
             # Fallback to API if direct patch URL doesn't work
@@ -332,9 +318,7 @@ class PatchManager(VexKernelCheckerBase):
             return alternatives
 
         # Check if this is a kernel.org stable/c URL and try to find GitHub equivalent
-        github_url_from_kernel_org = self._convert_kernel_org_to_github(
-            original_url, commit_id
-        )
+        github_url_from_kernel_org = self._convert_kernel_org_to_github(original_url, commit_id)
 
         # Prioritize GitHub URLs first (better API availability and reliability)
         github_templates = [
@@ -344,10 +328,7 @@ class PatchManager(VexKernelCheckerBase):
         ]
 
         # Add the converted GitHub URL at the very beginning if available and different
-        if (
-            github_url_from_kernel_org
-            and github_url_from_kernel_org not in github_templates
-        ):
+        if github_url_from_kernel_org and github_url_from_kernel_org not in github_templates:
             alternatives.append(github_url_from_kernel_org)
 
         # Add GitHub template URLs
@@ -404,9 +385,7 @@ class PatchManager(VexKernelCheckerBase):
                 response = requests.head(github_url, timeout=10)
                 if response.status_code == 200:
                     if self.verbose:
-                        print(
-                            f"Found GitHub equivalent for kernel.org URL: {github_url}"
-                        )
+                        print(f"Found GitHub equivalent for kernel.org URL: {github_url}")
                     return github_url
             except requests.RequestException:
                 # If we can't check, that's fine - we'll try other URLs
@@ -619,9 +598,7 @@ class PatchManager(VexKernelCheckerBase):
 
         return is_applied
 
-    def check_all_patch_files_missing(
-        self, patch_content: str, kernel_source_path: str
-    ) -> bool:
+    def check_all_patch_files_missing(self, patch_content: str, kernel_source_path: str) -> bool:
         """
         Check if ALL files from a patch are missing from the kernel source.
 

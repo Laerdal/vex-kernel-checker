@@ -73,9 +73,7 @@ class AIAssistant(VexKernelCheckerBase):
 
                 self.client = anthropic.Anthropic(api_key=self.api_key)
                 self.enabled = True
-                self.logger.info(
-                    f"AI Assistant initialized with Anthropic ({self.model})"
-                )
+                self.logger.info(f"AI Assistant initialized with Anthropic ({self.model})")
             else:
                 self.logger.warning(f"Unsupported AI provider: {self.provider}")
         except ImportError as e:
@@ -142,8 +140,9 @@ class AIAssistant(VexKernelCheckerBase):
             config_summary = relevant_configs[:15] + other_configs[:30]
 
             if config_summary:
-                context += f"\nKernel Configuration ({len(config_summary)} of {len(kernel_config)} configs shown):\n" + "\n".join(
-                    config_summary[:45]  # Max 45 configs to avoid token limit
+                context += (
+                    f"\nKernel Configuration ({len(config_summary)} of {len(kernel_config)} configs shown):\n"
+                    + "\n".join(config_summary[:45])  # Max 45 configs to avoid token limit
                 )
                 context += f"\n\nIMPORTANT: If required CONFIG options are not shown above as 'enabled', assume they are DISABLED."
 
@@ -299,9 +298,7 @@ Keep the response concise and practical (max 200 words)."""
         if confidence > 0.8 and current_analysis:
             current_state = current_analysis.get("state")
             ai_suggests_exploitable = is_relevant and confidence > 0.8
-            current_says_not_affected = (
-                current_state == VulnerabilityState.NOT_AFFECTED.value
-            )
+            current_says_not_affected = current_state == VulnerabilityState.NOT_AFFECTED.value
 
             if ai_suggests_exploitable and current_says_not_affected:
                 enhanced["ai_analysis"]["review_recommended"] = True

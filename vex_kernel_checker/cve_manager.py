@@ -96,13 +96,9 @@ class CVEDataManager(VexKernelCheckerBase):
 
             try:
                 if self.verbose:
-                    print(
-                        f"Fetching CVE details for {cve_id} from NVD API (attempt {attempt + 1})"
-                    )
+                    print(f"Fetching CVE details for {cve_id} from NVD API (attempt {attempt + 1})")
 
-                response = requests.get(
-                    base_url, params=params, headers=headers, timeout=30
-                )
+                response = requests.get(base_url, params=params, headers=headers, timeout=30)
 
                 if response.status_code == 200:
                     data = response.json()
@@ -113,9 +109,7 @@ class CVEDataManager(VexKernelCheckerBase):
                         # Extract CVE information
                         cve_info = CVEInfo(
                             cve_id=cve_id,
-                            description=vuln_data.get("descriptions", [{}])[0].get(
-                                "value", ""
-                            ),
+                            description=vuln_data.get("descriptions", [{}])[0].get("value", ""),
                             published_date=vuln_data.get("published", ""),
                             modified_date=vuln_data.get("lastModified", ""),
                         )
@@ -125,15 +119,11 @@ class CVEDataManager(VexKernelCheckerBase):
                         if "cvssMetricV31" in metrics and metrics["cvssMetricV31"]:
                             cvss_data = metrics["cvssMetricV31"][0]["cvssData"]
                             cve_info.cvss_score = cvss_data.get("baseScore")
-                            cve_info.severity = cvss_data.get(
-                                "baseSeverity", ""
-                            ).upper()
+                            cve_info.severity = cvss_data.get("baseSeverity", "").upper()
                         elif "cvssMetricV30" in metrics and metrics["cvssMetricV30"]:
                             cvss_data = metrics["cvssMetricV30"][0]["cvssData"]
                             cve_info.cvss_score = cvss_data.get("baseScore")
-                            cve_info.severity = cvss_data.get(
-                                "baseSeverity", ""
-                            ).upper()
+                            cve_info.severity = cvss_data.get("baseSeverity", "").upper()
                         elif "cvssMetricV2" in metrics and metrics["cvssMetricV2"]:
                             cvss_data = metrics["cvssMetricV2"][0]["cvssData"]
                             cve_info.cvss_score = cvss_data.get("baseScore")
@@ -178,9 +168,7 @@ class CVEDataManager(VexKernelCheckerBase):
                 elif response.status_code == 429:  # Rate limited
                     backoff_time = self.API_BACKOFF_FACTOR**attempt
                     if self.verbose:
-                        print(
-                            f"Rate limited by NVD API, backing off for {backoff_time}s"
-                        )
+                        print(f"Rate limited by NVD API, backing off for {backoff_time}s")
                     self._interruptible_sleep(backoff_time)
                     continue
 
@@ -271,9 +259,7 @@ class CVEDataManager(VexKernelCheckerBase):
             return alternatives
 
         # Check if this is a kernel.org stable/c URL and try to find GitHub equivalent
-        github_url_from_kernel_org = self._convert_kernel_org_to_github(
-            original_url, commit_id
-        )
+        github_url_from_kernel_org = self._convert_kernel_org_to_github(original_url, commit_id)
 
         # Prioritize GitHub URLs first (better API availability and reliability)
         github_templates = [
@@ -283,10 +269,7 @@ class CVEDataManager(VexKernelCheckerBase):
         ]
 
         # Add the converted GitHub URL at the very beginning if available and different
-        if (
-            github_url_from_kernel_org
-            and github_url_from_kernel_org not in github_templates
-        ):
+        if github_url_from_kernel_org and github_url_from_kernel_org not in github_templates:
             alternatives.append(github_url_from_kernel_org)
 
         # Add GitHub template URLs

@@ -108,9 +108,7 @@ class TestReportGenerator(unittest.TestCase):
 
     def test_print_summary_report(self):
         """Test printing summary report to console."""
-        summary_report = self.report_generator.generate_summary_report(
-            self.sample_vex_data
-        )
+        summary_report = self.report_generator.generate_summary_report(self.sample_vex_data)
 
         # Should not crash when printing
         try:
@@ -122,9 +120,7 @@ class TestReportGenerator(unittest.TestCase):
     @patch("builtins.open", mock_open())
     def test_export_report_json(self):
         """Test exporting report to JSON file."""
-        summary_report = self.report_generator.generate_summary_report(
-            self.sample_vex_data
-        )
+        summary_report = self.report_generator.generate_summary_report(self.sample_vex_data)
 
         result = self.report_generator.export_report(
             report=summary_report, output_file="/fake/output/report.json", format="json"
@@ -135,9 +131,7 @@ class TestReportGenerator(unittest.TestCase):
     @patch("builtins.open", mock_open())
     def test_export_report_text(self):
         """Test exporting report to text file."""
-        summary_report = self.report_generator.generate_summary_report(
-            self.sample_vex_data
-        )
+        summary_report = self.report_generator.generate_summary_report(self.sample_vex_data)
 
         result = self.report_generator.export_report(
             report=summary_report, output_file="/fake/output/report.txt", format="text"
@@ -147,9 +141,7 @@ class TestReportGenerator(unittest.TestCase):
 
     def test_format_report_as_text(self):
         """Test formatting report as text."""
-        summary_report = self.report_generator.generate_summary_report(
-            self.sample_vex_data
-        )
+        summary_report = self.report_generator.generate_summary_report(self.sample_vex_data)
 
         text_report = self.report_generator._format_report_as_text(summary_report)
 
@@ -158,9 +150,7 @@ class TestReportGenerator(unittest.TestCase):
 
     def test_calculate_risk_level(self):
         """Test risk level calculation."""
-        summary_report = self.report_generator.generate_summary_report(
-            self.sample_vex_data
-        )
+        summary_report = self.report_generator.generate_summary_report(self.sample_vex_data)
 
         risk_level = self.report_generator._calculate_risk_level(summary_report)
 
@@ -172,13 +162,9 @@ class TestReportGenerator(unittest.TestCase):
 
     def test_generate_recommendations(self):
         """Test recommendation generation."""
-        summary_report = self.report_generator.generate_summary_report(
-            self.sample_vex_data
-        )
+        summary_report = self.report_generator.generate_summary_report(self.sample_vex_data)
 
-        recommendations = self.report_generator._generate_recommendations(
-            summary_report
-        )
+        recommendations = self.report_generator._generate_recommendations(summary_report)
 
         self.assertIsInstance(recommendations, list)
         # May be empty if no recommendations are generated
@@ -200,9 +186,7 @@ class TestReportGenerator(unittest.TestCase):
 
     def test_vulnerability_state_counting(self):
         """Test that vulnerability states are properly counted in reports."""
-        summary_report = self.report_generator.generate_summary_report(
-            self.sample_vex_data
-        )
+        summary_report = self.report_generator.generate_summary_report(self.sample_vex_data)
 
         vulnerability_counts = summary_report.get("vulnerability_counts", {})
 
@@ -217,34 +201,24 @@ class TestReportGenerator(unittest.TestCase):
 
     def test_report_structure_compliance(self):
         """Test that generated reports comply with expected structure."""
-        summary_report = self.report_generator.generate_summary_report(
-            self.sample_vex_data
-        )
+        summary_report = self.report_generator.generate_summary_report(self.sample_vex_data)
 
         # Should have required fields
         self.assertIn("total", summary_report)  # Changed from 'total_vulnerabilities'
-        self.assertIn(
-            "by_severity", summary_report
-        )  # Changed from 'vulnerability_counts'
+        self.assertIn("by_severity", summary_report)  # Changed from 'vulnerability_counts'
 
         # Counts should be numbers
-        self.assertIsInstance(
-            summary_report["total"], int
-        )  # Changed from 'total_vulnerabilities'
+        self.assertIsInstance(summary_report["total"], int)  # Changed from 'total_vulnerabilities'
         self.assertIsInstance(
             summary_report["vulnerabilities"], dict
         )  # Changed from 'vulnerability_counts'
 
     def test_detailed_report_structure(self):
         """Test that detailed reports have proper structure."""
-        detailed_report = self.report_generator.generate_detailed_report(
-            self.sample_vex_data
-        )
+        detailed_report = self.report_generator.generate_detailed_report(self.sample_vex_data)
 
         # Should have required sections
-        self.assertIn(
-            "detailed_analysis", detailed_report
-        )  # Changed from 'vulnerabilities'
+        self.assertIn("detailed_analysis", detailed_report)  # Changed from 'vulnerabilities'
         self.assertIn("summary", detailed_report)
 
         # Detailed analysis should be a list
@@ -254,9 +228,7 @@ class TestReportGenerator(unittest.TestCase):
 
     def test_json_serialization(self):
         """Test that generated reports are JSON serializable."""
-        summary_report = self.report_generator.generate_summary_report(
-            self.sample_vex_data
-        )
+        summary_report = self.report_generator.generate_summary_report(self.sample_vex_data)
 
         # Should be able to serialize to JSON
         try:
@@ -307,9 +279,7 @@ class TestReportGenerator(unittest.TestCase):
 
     def test_export_report_invalid_format(self):
         """Test export report with invalid format."""
-        summary_report = self.report_generator.generate_summary_report(
-            self.sample_vex_data
-        )
+        summary_report = self.report_generator.generate_summary_report(self.sample_vex_data)
 
         with patch("builtins.open", mock_open()):
             result = self.report_generator.export_report(
@@ -367,9 +337,7 @@ class TestReportGenerator(unittest.TestCase):
         report = self.report_generator.generate_summary_report(large_vex)
 
         self.assertIsInstance(report, dict)
-        self.assertEqual(
-            report.get("total", 0), 100
-        )  # Changed from 'total_vulnerabilities'
+        self.assertEqual(report.get("total", 0), 100)  # Changed from 'total_vulnerabilities'
 
     def test_report_consistency(self):
         """Test that report generation is consistent across multiple calls."""
@@ -377,9 +345,7 @@ class TestReportGenerator(unittest.TestCase):
         report2 = self.report_generator.generate_summary_report(self.sample_vex_data)
 
         # Should generate identical reports for identical input
-        self.assertEqual(
-            report1["total"], report2["total"]
-        )  # Changed from 'total_vulnerabilities'
+        self.assertEqual(report1["total"], report2["total"])  # Changed from 'total_vulnerabilities'
         self.assertEqual(
             report1["vulnerabilities"], report2["vulnerabilities"]
         )  # Changed from 'vulnerability_counts'

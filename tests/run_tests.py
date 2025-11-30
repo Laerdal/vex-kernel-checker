@@ -204,15 +204,9 @@ def run_quick_smoke_tests():
 def main():
     """Main test runner function."""
     parser = argparse.ArgumentParser(description="VEX Kernel Checker Test Runner")
-    parser.add_argument(
-        "--coverage", action="store_true", help="Run tests with coverage analysis"
-    )
-    parser.add_argument(
-        "--smoke", action="store_true", help="Run quick smoke tests only"
-    )
-    parser.add_argument(
-        "--validate", action="store_true", help="Validate environment only"
-    )
+    parser.add_argument("--coverage", action="store_true", help="Run tests with coverage analysis")
+    parser.add_argument("--smoke", action="store_true", help="Run quick smoke tests only")
+    parser.add_argument("--validate", action="store_true", help="Validate environment only")
     parser.add_argument(
         "--pattern", default="test_*.py", help="Test file pattern (default: test_*.py)"
     )
@@ -222,9 +216,7 @@ def main():
         default=2,
         help="Test output verbosity (0-2, default: 2)",
     )
-    parser.add_argument(
-        "--failfast", action="store_true", help="Stop on first test failure"
-    )
+    parser.add_argument("--failfast", action="store_true", help="Stop on first test failure")
     parser.add_argument("--file", help="Run specific test file")
 
     args = parser.parse_args()
