@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vex-kernel-checker"
-version = "2.1.0"
+version = "2.2.0"
 description = "A sophisticated tool for analyzing CVE vulnerabilities against Linux kernel configurations"
 readme = "README.md"
 license = "MIT"

@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+### Fixed
+
+### Changed
+
+
+## [2.2.0] - 2025-11-30
+
+### Added
 - **Dependency-Track integration** - Download VEX from and upload results to Dependency-Track:
 
   - `--dt-url`: Download VEX directly from Dependency-Track API

@@ -24,7 +24,7 @@ from .patch_manager import PatchManager
 from .report_generator import ReportGenerator
 from .vulnerability_analyzer import VulnerabilityAnalyzer
 
-__version__ = "2.1.0"
+__version__ = "2.2.0"
 __author__ = "Karsten S. Opdal"
 __license__ = "MIT"
 
